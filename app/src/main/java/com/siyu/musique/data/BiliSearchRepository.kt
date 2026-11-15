@@ -34,17 +34,37 @@ class BiliSearchRepository(
     private val logger: MusiqueLogger = MusiqueLog.shared,
 ) : SearchRepository {
 
+    /** The keyword search being paged, or null for BV/AV lookups and before any search. */
+    private var currentQuery: String? = null
+
+    /** The last page loaded for [currentQuery]; 0 when nothing is loaded. */
+    private var currentPage: Int = 0
+
+    /** Every track loaded so far for [currentQuery], deduped by bvid. */
+    private var accumulated: List<Track> = emptyList()
+
+    /** True while a [loadMore] fetch is in flight, so a second call no-ops instead of doubling the request. */
+    private var loadingMore: Boolean = false
+
+    /** Bumped on every new search, so a page fetched for an older search is dropped when it lands. */
+    private var searchGeneration: Int = 0
+
+    override var hasMorePages: Boolean = false
+        private set
+
     init {
         scope.launch { bootstrap.ensureBootstrap() }
     }
 
     override suspend fun search(query: String): List<Track> {
         val trimmed = query.trim()
+        resetPagination()
         if (trimmed.isEmpty()) return emptyList()
         logger.i(TAG, "search query=\"$trimmed\"")
         try {
             val directBvid = directBvid(trimmed)
-            val tracks = if (directBvid != null) {
+            val tracks: List<Track>
+            if (directBvid != null) {
                 val placeholder = Track(
                     id = directBvid,
                     cid = "",
@@ -53,9 +73,18 @@ class BiliSearchRepository(
                     cover = "",
                     duration = Duration.ZERO,
                 )
-                listOf(fetchDetail(placeholder))
+                tracks = listOf(fetchDetail(placeholder))
+                // Single-item lookups never page.
+                currentPage = 1
+                accumulated = tracks
+                hasMorePages = false
             } else {
-                apiService.search(trimmed)
+                val page = apiService.search(trimmed)
+                tracks = page.tracks
+                currentQuery = trimmed
+                currentPage = 1
+                accumulated = tracks
+                hasMorePages = page.hasMore
             }
             logger.i(TAG, "search ok count=${tracks.size}")
             return tracks
@@ -63,6 +92,49 @@ class BiliSearchRepository(
             logger.e(TAG, "search failed: ${describeError(e)}")
             throw e
         }
+    }
+
+    override suspend fun loadMore(): SearchPageResult {
+        val query = currentQuery
+            ?: return SearchPageResult(accumulated, currentPage, hasMorePages)
+        if (loadingMore || !hasMorePages) {
+            return SearchPageResult(accumulated, currentPage, hasMorePages)
+        }
+        val generation = searchGeneration
+        loadingMore = true
+        try {
+            val nextPage = currentPage + 1
+            val page = apiService.search(query, nextPage)
+            // A new search started while this page was loading: drop
+            // the stale page and keep the new search's list untouched.
+            if (generation != searchGeneration) {
+                return SearchPageResult(accumulated, currentPage, hasMorePages)
+            }
+            currentPage = nextPage
+            hasMorePages = page.hasMore
+            val seen = accumulated.mapTo(mutableSetOf()) { it.id }
+            accumulated = accumulated + page.tracks.filter { seen.add(it.id) }
+            logger.i(
+                TAG,
+                "search page query=\"$query\" page=$nextPage " +
+                    "count=${page.tracks.size} hasMore=${page.hasMore}",
+            )
+            return SearchPageResult(accumulated, currentPage, hasMorePages)
+        } catch (e: Exception) {
+            logger.e(TAG, "search page failed: ${describeError(e)}")
+            throw e
+        } finally {
+            loadingMore = false
+        }
+    }
+
+    /** Forgets the current search's pages. The in-flight flag is left alone: the loading call owns it through its finally block. */
+    private fun resetPagination() {
+        searchGeneration++
+        currentQuery = null
+        currentPage = 0
+        accumulated = emptyList()
+        hasMorePages = false
     }
 
     override suspend fun fetchDetail(track: Track): Track {
