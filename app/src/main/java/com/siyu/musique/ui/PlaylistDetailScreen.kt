@@ -81,8 +81,10 @@ fun PlaylistDetailScreen(
     // A row tap on an entry with unknown parts waits for the
     // load: a collection expands, a single video plays (unless
     // selection mode took over meanwhile, which drops the tap).
-    // A failed load leaves the tap pending until the next tap
-    // retries it or a chevron tap supersedes it.
+    // The parts are fetched once and cached, so later taps
+    // expand, collapse, and play without another lookup. A
+    // failed load leaves the tap pending until another tap
+    // supersedes or retries it.
     LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds, selecting, playlists) {
         val pending = pendingTapTrack ?: return@LaunchedEffect
         val parts = videoParts[pending.id] ?: return@LaunchedEffect
@@ -247,14 +249,7 @@ fun PlaylistDetailScreen(
                         when (listRow) {
                             is DetailListRow.Video -> {
                                 val track = listRow.track
-                                val parts = videoParts[track.id]
                                 val expanded = track.id in expandedVideoIds
-                                // Probe the parts when the row first
-                                // shows, so the chevron appears only
-                                // on rows confirmed to be collections.
-                                LaunchedEffect(track.id) {
-                                    viewModel.loadVideoParts(track)
-                                }
                                 SongRow(
                                     track = track,
                                     // Rows are videos: match by bvid, since the
@@ -310,36 +305,6 @@ fun PlaylistDetailScreen(
                                                     checkmarkColor = MaterialTheme.colorScheme.surface,
                                                 ),
                                             )
-                                        } else if (parts != null && parts.size > 1) {
-                                            // The chevron shows only once the
-                                            // entry is known to have more than
-                                            // one part: single songs never get
-                                            // one. Tapping it toggles the rows,
-                                            // and supersedes a pending row tap.
-                                            IconButton(onClick = {
-                                                pendingTapTrack = null
-                                                viewModel.loadVideoParts(track)
-                                                expandedVideoIds = if (expanded) {
-                                                    expandedVideoIds - track.id
-                                                } else {
-                                                    expandedVideoIds + track.id
-                                                }
-                                            }) {
-                                                Icon(
-                                                    imageVector = if (expanded) {
-                                                        MusiqueIcons.ChevronDown
-                                                    } else {
-                                                        MusiqueIcons.ChevronRight
-                                                    },
-                                                    contentDescription = if (expanded) {
-                                                        "Collapse parts"
-                                                    } else {
-                                                        "Expand parts"
-                                                    },
-                                                    tint = MaterialTheme.colorScheme
-                                                        .onSurfaceVariant,
-                                                )
-                                            }
                                         }
                                     },
                                 )

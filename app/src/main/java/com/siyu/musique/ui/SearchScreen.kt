@@ -113,9 +113,10 @@ fun SearchScreen(
     var pendingTapTrack by remember { mutableStateOf<Track?>(null) }
 
     // A row tap on a video with unknown parts waits for the load:
-    // a collection expands, a single video plays. A failed load
-    // leaves the tap pending until the next tap retries it or a
-    // chevron tap supersedes it.
+    // a collection expands, a single video plays. The parts are
+    // fetched once and cached, so later taps expand, collapse,
+    // and play without another lookup. A failed load leaves the
+    // tap pending until another tap supersedes or retries it.
     LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds) {
         val pending = pendingTapTrack ?: return@LaunchedEffect
         val parts = videoParts[pending.id] ?: return@LaunchedEffect
@@ -370,14 +371,7 @@ fun SearchScreen(
                         when (listRow) {
                             is SearchListRow.Video -> {
                                 val track = listRow.track
-                                val parts = videoParts[track.id]
                                 val expanded = track.id in expandedVideoIds
-                                // Probe the parts when the row first
-                                // shows, so the chevron appears only
-                                // on rows confirmed to be collections.
-                                LaunchedEffect(track.id) {
-                                    viewModel.loadVideoParts(track)
-                                }
                                 SongRow(
                                     track = track,
                                     // Rows are videos: stay highlighted while any
@@ -405,47 +399,12 @@ fun SearchScreen(
                                         }
                                     },
                                     trailing = {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            // The chevron shows only once the
-                                            // video is known to have more than
-                                            // one part: single songs never get
-                                            // one. Tapping it toggles the rows,
-                                            // and supersedes a pending row tap.
-                                            if (parts != null && parts.size > 1) {
-                                                IconButton(onClick = {
-                                                    pendingTapTrack = null
-                                                    viewModel.loadVideoParts(track)
-                                                    expandedVideoIds = if (expanded) {
-                                                        expandedVideoIds - track.id
-                                                    } else {
-                                                        expandedVideoIds + track.id
-                                                    }
-                                                }) {
-                                                    Icon(
-                                                        imageVector = if (expanded) {
-                                                            MusiqueIcons.ChevronDown
-                                                        } else {
-                                                            MusiqueIcons.ChevronRight
-                                                        },
-                                                        contentDescription = if (expanded) {
-                                                            "Collapse parts"
-                                                        } else {
-                                                            "Expand parts"
-                                                        },
-                                                        tint = MaterialTheme.colorScheme
-                                                            .onSurfaceVariant,
-                                                    )
-                                                }
-                                            }
-                                            IconButton(onClick = { chooserTrack = track }) {
-                                                Icon(
-                                                    imageVector = MusiqueIcons.Add,
-                                                    contentDescription = "Add to playlist",
-                                                    tint = MaterialTheme.colorScheme.onSurface,
-                                                )
-                                            }
+                                        IconButton(onClick = { chooserTrack = track }) {
+                                            Icon(
+                                                imageVector = MusiqueIcons.Add,
+                                                contentDescription = "Add to playlist",
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                            )
                                         }
                                     },
                                 )
