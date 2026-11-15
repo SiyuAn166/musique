@@ -23,12 +23,26 @@ class FakePlayerEngine : PlayerEngine {
     /** When set, [stop] throws this instead of returning normally. */
     var failStopWith: Throwable? = null
 
+    /** The position [currentPositionMs] reports; tests move it to simulate playback. */
+    var positionMs: Long = 0L
+
+    /**
+     * The duration [durationMs] reports. -1 (the engine's unknown
+     * sentinel) by default, so tests exercise the ViewModel's
+     * track-duration fallback unless they set a real duration.
+     */
+    var durationMsValue: Long = PlayerEngine.UNKNOWN_DURATION
+
+    /** Positions passed to [seekTo], in order. */
+    val seekCalls = mutableListOf<Long>()
+
     override fun setListener(listener: PlayerEngine.Listener?) {
         this.listener = listener
     }
 
     override fun play(url: String, cacheKey: String) {
         playCalls.add(url to cacheKey)
+        positionMs = 0L
     }
 
     override fun pause() {
@@ -43,6 +57,15 @@ class FakePlayerEngine : PlayerEngine {
         stopCalls++
         failStopWith?.let { throw it }
     }
+
+    override fun seekTo(positionMs: Long) {
+        seekCalls.add(positionMs)
+        this.positionMs = positionMs
+    }
+
+    override fun currentPositionMs(): Long = positionMs
+
+    override fun durationMs(): Long = durationMsValue
 
     override fun release() {
         releaseCalls++
