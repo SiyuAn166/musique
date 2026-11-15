@@ -48,10 +48,11 @@ android {
         // update check compares this against the versionCode in
         // the release's version.json asset.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        // v0.1.0 tagged Nov 15, 2026. Standing rule: tag a version
-        // only when its features are complete, never one version
-        // per commit.
-        versionName = "0.1.0"
+        // v0.1.1 tagged Nov 15, 2026 (English UI, playlist
+        // rename, follow-finger player dismiss). Standing rule:
+        // tag a version only when its features are complete,
+        // never one version per commit.
+        versionName = "0.1.1"
     }
 
     buildTypes {
