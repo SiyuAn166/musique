@@ -32,11 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -79,11 +79,15 @@ import java.io.File
  * screen, "playlists" lists the playlists (unreachable since
  * the home tab shows them inline, kept for now), and
  * "playlist/{id}" is one playlist's detail screen. The player
- * page is not a destination: it is a full-screen dialog above
- * the shell, so the tab destination stays composed underneath
- * and shows through while the player slides down on dismiss.
- * The dialog window blocks touches to the shell, so the player
- * needs no touch barrier of its own. The ViewModel is shared between the screens and is built with
+ * page is not a destination: it is a full-screen overlay Box
+ * above the shell, so the tab destination stays composed
+ * underneath and shows through while the player slides down
+ * on dismiss. The shell Column swallows touches while the
+ * player is open, so taps on empty areas of the player never
+ * reach the mini bar, the tab bar, or the page underneath; the
+ * barrier sits on the shell, never on the overlay, because a
+ * consuming barrier above the player would starve the
+ * player's own gestures. The ViewModel is shared between the screens and is built with
  * the repository, player engine, and stores the Activity hands
  * in. Playlist ids are UUIDs or "default" (or "downloads" for
  * the synthetic playlist), so they are safe to carry in a route.
@@ -139,7 +143,7 @@ fun MusiqueApp(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Whether the player dialog is open. Plain UI state: it
+    // Whether the player overlay is open. Plain UI state: it
     // need not survive process death, the mini bar reopens the
     // player.
     var playerOpen by remember { mutableStateOf(false) }
@@ -185,6 +189,11 @@ fun MusiqueApp(
         wasImeVisible = imeVisible
     }
 
+    // Back closes the player overlay instead of popping the nav
+    // stack. The chevron button closes instantly too, with no
+    // animation, like every other page switch.
+    BackHandler(enabled = playerOpen) { closePlayer() }
+
     MusiqueTheme {
         // The Surface paints the white background: without it the
         // screens are transparent and the window background shows
@@ -194,7 +203,26 @@ fun MusiqueApp(
             modifier = modifier.fillMaxSize(),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // While the player is open, swallow every
+                        // touch the player itself did not use, so
+                        // nothing reaches the page, the mini bar,
+                        // or the tab bar underneath. The overlay
+                        // sits above the shell, so the player's
+                        // own gestures run first and are never
+                        // starved by this barrier.
+                        .pointerInput(playerOpen) {
+                            if (playerOpen) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            }
+                        },
+                ) {
                     Box(modifier = Modifier.weight(1f)) {
                         NavHost(
                             navController = navController,
@@ -348,27 +376,15 @@ fun MusiqueApp(
                         }
                     }
                 }
-                // The player is a full-screen dialog above the
+                // The player is a full-screen overlay above the
                 // shell, not a navigation destination: the tab
                 // destination stays composed underneath, so
                 // dragging the player down reveals it instead of
-                // a blank background. The dialog window is
-                // transparent with no dim, and it blocks touches
-                // to the shell on its own. Back closes the player
-                // through the dialog; the chevron button closes
-                // instantly too, with no animation, like every
-                // other page switch. Only the drag dismiss
-                // animates.
+                // a blank background. Opening and the chevron
+                // close cut instantly, like every other page
+                // switch; only the drag dismiss animates.
                 if (playerOpen) {
-                    Dialog(
-                        onDismissRequest = closePlayer,
-                        properties = DialogProperties(
-                            dismissOnBackPress = true,
-                            dismissOnClickOutside = false,
-                            usePlatformDefaultWidth = false,
-                            decorFitsSystemWindows = false,
-                        ),
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                         PlayerScreen(
                             viewModel = viewModel,
                             onClose = closePlayer,

@@ -74,12 +74,6 @@ import kotlinx.coroutines.launch
 /** A downward release faster than this dismisses the page even before the drag threshold. */
 private const val DISMISS_FLING_VELOCITY_PX_PER_SECOND: Float = 1000f
 
-/** The player overlay background lets the tab page show faintly through it. */
-private const val PLAYER_BACKGROUND_ALPHA: Float = 0.9f
-
-/** The player overlay's top corner radius: a floating sheet, not a full-bleed page. */
-private const val PLAYER_TOP_CORNER_DP: Int = 36
-
 /**
  * Player page, approved redesign: a centered chevron-down back
  * icon, a large square cover with a soft shadow, a large bold
@@ -106,12 +100,10 @@ private const val PLAYER_TOP_CORNER_DP: Int = 36
  * button, and a shorter drag springs it back to rest. Player
  * errors show their message with a retry icon button.
  *
- * The page paints its own background: it is rendered as an
- * overlay above the tab content, and the background must
+ * The page paints its own opaque background: it is rendered as
+ * an overlay above the tab content, and the background must
  * slide down with the page during the dismiss drag so the tab
- * content shows through behind it. The background is slightly
- * translucent with large rounded top corners, so the player
- * reads as a floating sheet above the tabs. [onDraggingChanged]
+ * content shows through behind it. [onDraggingChanged]
  * reports whether the page is currently moved down from rest,
  * so the shell can show its bars for the reveal and hide them
  * while the player sits still.
@@ -184,15 +176,7 @@ fun PlayerScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .clip(
-                RoundedCornerShape(
-                    topStart = PLAYER_TOP_CORNER_DP.dp,
-                    topEnd = PLAYER_TOP_CORNER_DP.dp,
-                ),
-            )
-            .background(
-                MaterialTheme.colorScheme.background.copy(alpha = PLAYER_BACKGROUND_ALPHA),
-            )
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .onSizeChanged { pageHeightPx = it.height }
             .pointerInput(onClose, dismissThresholdPx) {
