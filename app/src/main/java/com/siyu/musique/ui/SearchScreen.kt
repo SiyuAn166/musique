@@ -372,6 +372,12 @@ fun SearchScreen(
                                 val track = listRow.track
                                 val parts = videoParts[track.id]
                                 val expanded = track.id in expandedVideoIds
+                                // Probe the parts when the row first
+                                // shows, so the chevron appears only
+                                // on rows confirmed to be collections.
+                                LaunchedEffect(track.id) {
+                                    viewModel.loadVideoParts(track)
+                                }
                                 SongRow(
                                     track = track,
                                     // Rows are videos: stay highlighted while any
@@ -402,12 +408,12 @@ fun SearchScreen(
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            // The chevron shows until the video
-                                            // is known to have a single part;
-                                            // tapping it loads the parts on
-                                            // first use and toggles the rows,
+                                            // The chevron shows only once the
+                                            // video is known to have more than
+                                            // one part: single songs never get
+                                            // one. Tapping it toggles the rows,
                                             // and supersedes a pending row tap.
-                                            if (parts == null || parts.size > 1) {
+                                            if (parts != null && parts.size > 1) {
                                                 IconButton(onClick = {
                                                     pendingTapTrack = null
                                                     viewModel.loadVideoParts(track)

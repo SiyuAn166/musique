@@ -73,6 +73,17 @@ interface SearchRepository {
     suspend fun fetchDetail(track: Track): DetailedTrack
 
     /**
+     * Every part of [track] as its own track, for list expansion:
+     * the part name when the video has one, the video title
+     * otherwise, each with its own cid and duration. The default
+     * goes through [fetchDetail]; implementations that can probe
+     * the parts cheaply (the unsigned pagelist) override it, so a
+     * list can learn which rows are collections without a signed
+     * details call per row.
+     */
+    suspend fun fetchParts(track: Track): List<Track> = fetchDetail(track).parts
+
+    /**
      * Resolves the playable DASH audio stream for [track], which must
      * already carry a cid (call [fetchDetail] first when it does
      * not), picking by [preference]'s try order. The URL is resolved

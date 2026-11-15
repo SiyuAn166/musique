@@ -281,4 +281,94 @@ class BiliSearchRepositoryTest {
         assertTrue(detailed.parts.all { it.cover == "https://cover.example/x.jpg" })
         assertTrue(detailed.parts.all { it.id == "BV1q4FTeBEMj" })
     }
+
+    @Test
+    fun `fetchParts maps pagelist parts to tracks without a signed details call`() = runTest {
+        val gateway = FakeGateway()
+        val stack = Stack(gateway)
+        val pagelistBody =
+            """[{"cid":111,"page":1,"part":"First Song","duration":200},""" +
+                """{"cid":222,"page":2,"part":"","duration":0}]"""
+        gateway.handler = { request ->
+            when {
+                request.url.contains("finger/spi") ->
+                    envelopeResponse(0, BiliBootstrapTest.FINGER_DATA)
+                request.url.contains("GenWebTicket") ->
+                    envelopeResponse(0, BiliBootstrapTest.TICKET_DATA)
+                request.url == "https://www.bilibili.com/" ->
+                    plainResponse(200, "<html/>")
+                request.url.contains("pagelist") ->
+                    envelopeResponse(0, pagelistBody)
+                request.url.contains("/nav") ->
+                    envelopeResponse(-101, ApiServiceTest.NAV_DATA)
+                else -> error("unexpected ${request.url}")
+            }
+        }
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        gateway.requests.clear()
+        val video = Track(
+            id = "BV1PROBE",
+            cid = "",
+            title = "Video Title",
+            artist = "Artist",
+            cover = "https://cover.example/x.jpg",
+            duration = 500.seconds,
+        )
+        val parts = repository.fetchParts(video)
+        assertEquals(2, parts.size)
+        assertEquals("111", parts[0].cid)
+        assertEquals("First Song", parts[0].title)
+        assertEquals(200_000L, parts[0].duration.inWholeMilliseconds)
+        // An unnamed part with no duration falls back to the video's title and duration.
+        assertEquals("222", parts[1].cid)
+        assertEquals("Video Title", parts[1].title)
+        assertEquals(500_000L, parts[1].duration.inWholeMilliseconds)
+        assertTrue(parts.all { it.artist == "Artist" })
+        assertTrue(parts.all { it.cover == "https://cover.example/x.jpg" })
+        assertTrue(parts.all { it.id == "BV1PROBE" })
+        // The probe stays on the unsigned pagelist: no signed details call.
+        assertTrue(gateway.requests.any { it.url.contains("pagelist") })
+        assertTrue(gateway.requests.none { it.url.contains("wbi/view") })
+    }
+
+    @Test
+    fun `fetchParts falls back to details when the pagelist fails`() = runTest {
+        val gateway = FakeGateway()
+        val stack = Stack(gateway)
+        gateway.handler = { request ->
+            when {
+                request.url.contains("finger/spi") ->
+                    envelopeResponse(0, BiliBootstrapTest.FINGER_DATA)
+                request.url.contains("GenWebTicket") ->
+                    envelopeResponse(0, BiliBootstrapTest.TICKET_DATA)
+                request.url == "https://www.bilibili.com/" ->
+                    plainResponse(200, "<html/>")
+                request.url.contains("pagelist") ->
+                    envelopeResponse(-352, "{}")
+                request.url.contains("wbi/view") ->
+                    envelopeResponse(0, ApiServiceTest.VIEW_DATA)
+                request.url.contains("/nav") ->
+                    envelopeResponse(-101, ApiServiceTest.NAV_DATA)
+                else -> error("unexpected ${request.url}")
+            }
+        }
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        gateway.requests.clear()
+        val video = Track(
+            id = "BV1FALLBACK",
+            cid = "",
+            title = "Video Title",
+            artist = "Artist",
+            cover = "https://cover.example/x.jpg",
+            duration = 500.seconds,
+        )
+        val parts = repository.fetchParts(video)
+        assertEquals(1, parts.size)
+        assertEquals("28139389900", parts[0].cid)
+        assertEquals("001. 夜曲-周杰伦", parts[0].title)
+        assertTrue(gateway.requests.any { it.url.contains("pagelist") })
+        assertTrue(gateway.requests.any { it.url.contains("wbi/view") })
+    }
 }

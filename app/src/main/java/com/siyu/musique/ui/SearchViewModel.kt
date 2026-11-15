@@ -351,18 +351,18 @@ class SearchViewModel(
     private val partsLoading = mutableSetOf<String>()
 
     /**
-     * Loads [video]'s parts into [videoParts] for list expansion.
-     * A no-op when the parts are already known or a load is in
-     * flight. A failure only logs: the row stays unexpanded and
-     * the next tap retries.
+     * Loads [video]'s parts into [videoParts] for list expansion,
+     * through the cheap parts probe. A no-op when the parts are
+     * already known or a load is in flight. A failure only logs:
+     * the row shows no chevron and the next tap retries.
      */
     fun loadVideoParts(video: Track) {
         if (_videoParts.value.containsKey(video.id) || video.id in partsLoading) return
         partsLoading += video.id
         viewModelScope.launch {
             try {
-                val detailed = repository.fetchDetail(video)
-                _videoParts.value = _videoParts.value + (video.id to detailed.parts)
+                val parts = repository.fetchParts(video)
+                _videoParts.value = _videoParts.value + (video.id to parts)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

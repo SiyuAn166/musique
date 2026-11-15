@@ -71,6 +71,31 @@ class VideoPartsExpansionTest {
             AudioStream(30280, "https://cdn.example/${track.id}.m4s", 216670L)
     }
 
+    /** A repository whose parts probe is separate from details, pinning the cheap path. */
+    private class PartsProbeRepository(
+        private val parts: List<Track>,
+    ) : SearchRepository {
+        var fetchPartsCalls: Int = 0
+            private set
+        var detailCalls: Int = 0
+            private set
+
+        override suspend fun search(query: String): List<Track> = emptyList()
+
+        override suspend fun fetchDetail(track: Track): DetailedTrack {
+            detailCalls++
+            throw RuntimeException("details must not be called for the probe")
+        }
+
+        override suspend fun fetchParts(track: Track): List<Track> {
+            fetchPartsCalls++
+            return parts
+        }
+
+        override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream =
+            AudioStream(30280, "https://cdn.example/${track.id}.m4s", 216670L)
+    }
+
     private fun track(id: String, cid: String, title: String = "$id:$cid") = Track(
         id = id,
         cid = cid,
@@ -189,6 +214,19 @@ class VideoPartsExpansionTest {
         )
         advanceUntilIdle()
         assertEquals(1, defaultTracks(vm).size)
+    }
+
+    @Test
+    fun `loadVideoParts uses the parts probe, not details`() = runTest(testDispatcher) {
+        val parts = listOf(track("BV1PROBE", "1"), track("BV1PROBE", "2"))
+        val repository = PartsProbeRepository(parts)
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        vm.loadVideoParts(track("BV1PROBE", cid = ""))
+        advanceUntilIdle()
+        assertEquals(1, repository.fetchPartsCalls)
+        assertEquals(0, repository.detailCalls)
+        assertEquals(parts, vm.videoParts.value["BV1PROBE"])
     }
 
     @Test

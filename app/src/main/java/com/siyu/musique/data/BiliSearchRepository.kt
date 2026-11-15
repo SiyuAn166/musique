@@ -175,6 +175,33 @@ class BiliSearchRepository(
         }
     }
 
+    override suspend fun fetchParts(track: Track): List<Track> {
+        val videoParts = try {
+            apiService.fetchParts(track.id)
+        } catch (e: Exception) {
+            // The cheap probe failed; the signed details call is
+            // the fallback, so expansion still works when the
+            // pagelist endpoint alone is having trouble.
+            logger.w(
+                TAG,
+                "parts pagelist failed for ${track.id} " +
+                    "(${e::class.simpleName}), trying details",
+            )
+            return fetchDetail(track).parts
+        }
+        // Every part becomes its own track, on the video row's
+        // metadata: the part name when the video has one, the
+        // video title otherwise, each with its own cid and
+        // duration.
+        return videoParts.map { part ->
+            track.copy(
+                cid = part.cid,
+                title = part.title.ifEmpty { track.title },
+                duration = if (part.duration > Duration.ZERO) part.duration else track.duration,
+            )
+        }
+    }
+
     override suspend fun fetchSuggestions(query: String): List<String> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()

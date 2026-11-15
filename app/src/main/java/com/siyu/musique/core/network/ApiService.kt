@@ -46,9 +46,7 @@ class ApiService(
                     "(${detailError::class.simpleName}), trying pagelist",
             )
             try {
-                val pagelistUrl =
-                    "$PAGELIST_URL?bvid=${WbiSigner.percentEncode(bvid)}"
-                val parts = parsePagelistParts(client.getData(pagelistUrl, signed = false))
+                val parts = fetchParts(bvid)
                 val first = parts.first()
                 logger.i(TAG, "detail pagelist fallback ok for $bvid cid=${first.cid}")
                 return VideoDetail(
@@ -71,6 +69,17 @@ class ApiService(
                 throw fallbackError
             }
         }
+    }
+
+    /**
+     * Every part of [bvid], from the unsigned pagelist endpoint:
+     * the cheap parts probe. List expansion asks this first to
+     * learn whether a video is a collection at all, without the
+     * signed wbi/view call that full details need.
+     */
+    suspend fun fetchParts(bvid: String): List<VideoPart> {
+        val pagelistUrl = "$PAGELIST_URL?bvid=${WbiSigner.percentEncode(bvid)}"
+        return parsePagelistParts(client.getData(pagelistUrl, signed = false))
     }
 
     /**
