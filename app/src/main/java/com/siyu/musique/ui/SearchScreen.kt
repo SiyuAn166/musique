@@ -108,6 +108,24 @@ fun SearchScreen(
 
     /** Bvids whose parts are expanded in the results list. */
     var expandedVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    /** The video whose row tap is waiting on a parts load to decide between expanding and playing. */
+    var pendingTapTrack by remember { mutableStateOf<Track?>(null) }
+
+    // A row tap on a video with unknown parts waits for the load:
+    // a collection expands, a single video plays. A failed load
+    // leaves the tap pending until the next tap retries it or a
+    // chevron tap supersedes it.
+    LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds) {
+        val pending = pendingTapTrack ?: return@LaunchedEffect
+        val parts = videoParts[pending.id] ?: return@LaunchedEffect
+        pendingTapTrack = null
+        if (parts.size > 1) {
+            expandedVideoIds = expandedVideoIds + pending.id
+        } else {
+            viewModel.play(pending)
+        }
+    }
     var queryField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
@@ -359,7 +377,27 @@ fun SearchScreen(
                                     // Rows are videos: stay highlighted while any
                                     // part of the video plays, not just part one.
                                     isCurrent = track.id == currentTrack?.id,
-                                    onClick = { viewModel.play(track) },
+                                    // Tapping a row expands a collection and
+                                    // plays a single video. Unknown parts
+                                    // load first; the pending tap above
+                                    // decides once they land.
+                                    onClick = {
+                                        val known = videoParts[track.id]
+                                        when {
+                                            known != null && known.size > 1 -> {
+                                                expandedVideoIds = if (expanded) {
+                                                    expandedVideoIds - track.id
+                                                } else {
+                                                    expandedVideoIds + track.id
+                                                }
+                                            }
+                                            known != null -> viewModel.play(track)
+                                            else -> {
+                                                pendingTapTrack = track
+                                                viewModel.loadVideoParts(track)
+                                            }
+                                        }
+                                    },
                                     trailing = {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -367,9 +405,11 @@ fun SearchScreen(
                                             // The chevron shows until the video
                                             // is known to have a single part;
                                             // tapping it loads the parts on
-                                            // first use and toggles the rows.
+                                            // first use and toggles the rows,
+                                            // and supersedes a pending row tap.
                                             if (parts == null || parts.size > 1) {
                                                 IconButton(onClick = {
+                                                    pendingTapTrack = null
                                                     viewModel.loadVideoParts(track)
                                                     expandedVideoIds = if (expanded) {
                                                         expandedVideoIds - track.id

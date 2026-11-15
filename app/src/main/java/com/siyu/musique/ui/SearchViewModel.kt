@@ -1002,7 +1002,12 @@ class SearchViewModel(
                 if (current.cid.isEmpty()) {
                     val detailed = repository.fetchDetail(current)
                     if (intent != playIntent) return@launch
-                    updateTrackInList(detailed.track)
+                    // The search list keeps the video-level row:
+                    // the detailed form (first part's cid and
+                    // duration) belongs to the playing track
+                    // only, never back in the list, or a
+                    // collection row would turn into its first
+                    // song after playing.
                     _currentParts.value = detailed.parts
                     partsKnownForVideoId = current.id
                     current = detailed.track
@@ -1807,13 +1812,6 @@ class SearchViewModel(
         val engineDuration = playerEngine.durationMs()
         if (engineDuration > 0) return engineDuration
         return _currentTrack.value?.duration?.inWholeMilliseconds?.coerceAtLeast(0L) ?: 0L
-    }
-
-    private fun updateTrackInList(detailed: Track) {
-        val state = _searchState.value as? SearchUiState.Success ?: return
-        _searchState.value = state.copy(
-            tracks = state.tracks.map { if (it.id == detailed.id) detailed else it },
-        )
     }
 
     companion object {

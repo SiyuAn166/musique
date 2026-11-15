@@ -21,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,7 +37,9 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 /**
  * Playlist detail screen: a back chevron, the playlist name as a
  * large title, the song count, and flat song rows like the search
- * rows. Tapping a song plays it with the playlist as the queue.
+ * rows. Tapping a row expands a collection to its parts and plays
+ * a single video, with the playlist as the queue; tapping a part
+ * plays that part.
  * The multi-select button at the top turns on selection mode:
  * checkboxes appear on the rows, tapping a row toggles its
  * checkbox instead of playing, and while any song is selected a
@@ -71,6 +74,27 @@ fun PlaylistDetailScreen(
 
     /** Bvids whose parts are expanded in the list. Expansion hides while selecting. */
     var expandedVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    /** The entry whose row tap is waiting on a parts load to decide between expanding and playing. */
+    var pendingTapTrack by remember { mutableStateOf<Track?>(null) }
+
+    // A row tap on an entry with unknown parts waits for the
+    // load: a collection expands, a single video plays (unless
+    // selection mode took over meanwhile, which drops the tap).
+    // A failed load leaves the tap pending until the next tap
+    // retries it or a chevron tap supersedes it.
+    LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds, selecting, playlists) {
+        val pending = pendingTapTrack ?: return@LaunchedEffect
+        val parts = videoParts[pending.id] ?: return@LaunchedEffect
+        pendingTapTrack = null
+        if (parts.size > 1) {
+            expandedVideoIds = expandedVideoIds + pending.id
+        } else if (!selecting) {
+            val current = playlists.firstOrNull { it.id == playlistId }
+                ?: return@LaunchedEffect
+            viewModel.playFromPlaylist(pending, current)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -239,7 +263,27 @@ fun PlaylistDetailScreen(
                                                 selectedKeys + track.key
                                             }
                                         } else {
-                                            viewModel.playFromPlaylist(track, playlist)
+                                            // Tapping a row expands a collection
+                                            // and plays a single video. Unknown
+                                            // parts load first; the pending tap
+                                            // above decides once they land.
+                                            val known = videoParts[track.id]
+                                            when {
+                                                known != null && known.size > 1 -> {
+                                                    expandedVideoIds = if (expanded) {
+                                                        expandedVideoIds - track.id
+                                                    } else {
+                                                        expandedVideoIds + track.id
+                                                    }
+                                                }
+                                                known != null -> {
+                                                    viewModel.playFromPlaylist(track, playlist)
+                                                }
+                                                else -> {
+                                                    pendingTapTrack = track
+                                                    viewModel.loadVideoParts(track)
+                                                }
+                                            }
                                         }
                                     },
                                     trailing = {
@@ -264,8 +308,10 @@ fun PlaylistDetailScreen(
                                             // The chevron shows until the entry
                                             // is known to have a single part;
                                             // tapping it loads the parts on
-                                            // first use and toggles the rows.
+                                            // first use and toggles the rows,
+                                            // and supersedes a pending row tap.
                                             IconButton(onClick = {
+                                                pendingTapTrack = null
                                                 viewModel.loadVideoParts(track)
                                                 expandedVideoIds = if (expanded) {
                                                     expandedVideoIds - track.id

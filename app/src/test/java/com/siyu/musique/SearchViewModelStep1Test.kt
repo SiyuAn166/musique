@@ -165,7 +165,7 @@ class SearchViewModelStep1Test {
     }
 
     @Test
-    fun `play fills an empty cid from details and updates the list`() = runTest(testDispatcher) {
+    fun `play fills an empty cid from details and leaves the list row unchanged`() = runTest(testDispatcher) {
         val repository = DetailFillingRepository()
         val viewModel = SearchViewModel(repository)
         viewModel.search("夜曲")
@@ -176,8 +176,11 @@ class SearchViewModelStep1Test {
         advanceUntilIdle()
         assertEquals("999", viewModel.currentTrack.value?.cid)
         assertEquals("Detailed Title", viewModel.currentTrack.value?.title)
-        val updated = (viewModel.searchState.value as SearchUiState.Success).tracks[0]
-        assertEquals("999", updated.cid)
+        // The list row keeps the search result as-is: the
+        // detailed form belongs to the playing track only, so a
+        // collection row never turns into its first song.
+        val kept = (viewModel.searchState.value as SearchUiState.Success).tracks[0]
+        assertEquals(track, kept)
         assertEquals(1, repository.detailCalls)
     }
 
