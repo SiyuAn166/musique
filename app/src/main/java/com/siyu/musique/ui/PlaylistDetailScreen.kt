@@ -1,0 +1,184 @@
+package com.siyu.musique.ui
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.ui.theme.MusiqueIcons
+
+/**
+ * Playlist detail screen: a back chevron, the playlist name as a
+ * large title, the song count, and flat song rows like the search
+ * rows, with a minus-circle icon button to remove the song from the
+ * playlist. Tapping a song plays it with the playlist as the queue.
+ * User-created playlists get a trash icon to delete the whole
+ * playlist; the default playlist cannot be deleted. An empty
+ * playlist shows a short empty message.
+ */
+@Composable
+fun PlaylistDetailScreen(
+    viewModel: SearchViewModel,
+    playlistId: String,
+    onOpenPlayer: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val playerState by viewModel.playerState.collectAsStateWithLifecycle()
+    val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
+
+    val playlist = playlists.firstOrNull { it.id == playlistId }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = MusiqueIcons.ChevronLeft,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            if (playlist != null && !playlist.isDefault) {
+                IconButton(
+                    onClick = {
+                        viewModel.deletePlaylist(playlist.id)
+                        onBack()
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Delete,
+                        contentDescription = "Delete playlist",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+
+        if (playlist == null) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Playlist not found.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            Text(
+                text = playlist.name,
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = songCountLabel(playlist.trackCount),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (playlist.tracks.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "No songs yet. Add songs from search.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    itemsIndexed(
+                        playlist.tracks,
+                        key = { _, track -> track.key },
+                    ) { index, track ->
+                        SongRow(
+                            track = track,
+                            isCurrent = track.key == currentTrack?.key,
+                            onClick = { viewModel.playFromPlaylist(track, playlist) },
+                            trailing = {
+                                IconButton(
+                                    onClick = {
+                                        viewModel.removeTrackFromPlaylist(
+                                            playlist.id,
+                                            track.key,
+                                        )
+                                    },
+                                ) {
+                                    Icon(
+                                        imageVector = MusiqueIcons.RemoveCircleOutline,
+                                        contentDescription = "Remove from playlist",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            },
+                        )
+                        if (index < playlist.tracks.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(
+                                    start = SONG_ROW_DIVIDER_START_DP.dp,
+                                ),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        val track = currentTrack
+        if (track != null) {
+            MiniPlayerBar(
+                track = track,
+                isPlaying = isPlaying,
+                playerState = playerState,
+                progress = progress,
+                onTogglePlayPause = { viewModel.togglePlayPause() },
+                onRetry = { viewModel.retryPlayback() },
+                onOpenPlayer = onOpenPlayer,
+            )
+        }
+    }
+}

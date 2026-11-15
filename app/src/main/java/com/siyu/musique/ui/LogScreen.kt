@@ -9,12 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,20 +25,26 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.core.logging.MusiqueLog
+import com.siyu.musique.ui.theme.MusiqueIcons
 
 /**
- * Debug log screen (Step 3): the last ~300 log lines, oldest first,
- * monospace, auto-scrolled to the bottom. Copy puts every line on
- * the clipboard; Clear drops the buffer. The same lines go to
- * logcat under the tag "Musique". Log lines never contain full play
- * URLs, cookies, tickets, or keys: hosts, ids, counts, and error
- * kinds only.
+ * Debug log screen: the last ~300 log lines, oldest first,
+ * monospace, auto-scrolled to the bottom. The copy icon puts every
+ * line on the clipboard; the trash icon drops the buffer. The same
+ * lines go to logcat under the tag "Musique". Log lines never
+ * contain full play URLs, cookies, tickets, or keys: hosts, ids,
+ * counts, and error kinds only.
  *
  * The screen reads the shared logger's buffer directly, with no
  * ViewModel indirection, and writes one line on every entry, so a
  * working logger can never show a blank screen; the header always
  * shows the buffered count, so an empty buffer reads as "0 lines
  * buffered" instead of a blank screen.
+ *
+ * The lines render in a plain vertically scrollable Column, not a
+ * LazyColumn: on one device the LazyColumn showed nothing while the
+ * header reported buffered lines, and 300 lines max is cheap enough
+ * for a debug screen.
  */
 @Composable
 fun LogScreen(
@@ -48,7 +54,7 @@ fun LogScreen(
 ) {
     val lines by MusiqueLog.shared.buffer.snapshot.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
-    val listState = rememberLazyListState()
+    val scrollState = rememberScrollState()
 
     // Once per entry: prove the logger is alive by writing into the
     // very buffer this screen shows.
@@ -57,9 +63,7 @@ fun LogScreen(
     }
 
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) {
-            listState.scrollToItem(lines.lastIndex)
-        }
+        scrollState.scrollTo(Int.MAX_VALUE)
     }
 
     Column(
@@ -72,21 +76,33 @@ fun LogScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 8.dp),
         ) {
-            TextButton(onClick = onBack) {
-                Text("Back")
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = MusiqueIcons.ChevronLeft,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(
+            IconButton(
                 onClick = {
                     clipboard.setText(
                         AnnotatedString(lines.joinToString("\n") { it.format() }),
                     )
                 },
             ) {
-                Text("Copy")
+                Icon(
+                    imageVector = MusiqueIcons.ContentCopy,
+                    contentDescription = "Copy log",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
-            TextButton(onClick = { viewModel.clearLogs() }) {
-                Text("Clear")
+            IconButton(onClick = { viewModel.clearLogs() }) {
+                Icon(
+                    imageVector = MusiqueIcons.Delete,
+                    contentDescription = "Clear log",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
 
@@ -104,13 +120,13 @@ fun LogScreen(
                 modifier = Modifier.padding(16.dp),
             )
         } else {
-            LazyColumn(
-                state = listState,
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp),
             ) {
-                items(lines) { line ->
+                lines.forEach { line ->
                     Text(
                         text = line.format(),
                         fontFamily = FontFamily.Monospace,

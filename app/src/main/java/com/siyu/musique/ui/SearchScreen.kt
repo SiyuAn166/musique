@@ -15,45 +15,61 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.siyu.musique.model.Track
-import com.siyu.musique.model.formatDuration
+import com.siyu.musique.ui.theme.MusiqueIcons
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Load the next page when the last visible row is this close to the end of the list. */
 private const val LOAD_MORE_THRESHOLD = 3
 
 /**
- * Search screen (Step 3): search box, real Bilibili result list with
- * covers, mini player bar, and a log button. Tapping a row plays it
- * through ExoPlayer (cid fill + fresh play URL first). Search errors
- * show a distinct message per failure kind, with a Retry button;
- * player errors show their own message with a Retry button above the
- * mini player bar.
+ * Search screen: a large "Search" title, the list icon (playlists)
+ * and three-dot icon (log) at the top right, a light-grey rounded
+ * search field, and flat result rows with hairline dividers. Search
+ * triggers on the keyboard search action and on tapping the
+ * magnifier icon. Tapping a row plays it (cid fill + fresh play URL
+ * first); the plus icon on a row opens the playlist chooser.
+ * Search errors show a distinct message per failure kind with a
+ * retry icon button; player errors show their own message with a
+ * retry icon button above the mini player bar.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
     onOpenPlayer: () -> Unit,
+    onOpenPlaylists: () -> Unit,
     onOpenLog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -61,7 +77,12 @@ fun SearchScreen(
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
+    val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+
+    /** The track waiting for a playlist choice, or null when the chooser is closed. */
+    var chooserTrack by remember { mutableStateOf<Track?>(null) }
 
     Column(
         modifier = modifier
@@ -71,38 +92,98 @@ fun SearchScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                label = { Text("Search songs") },
-                singleLine = true,
+            Text(
+                text = "Search",
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(onClick = { viewModel.search(query) }) {
-                Text("Search")
+            IconButton(onClick = onOpenPlaylists) {
+                Icon(
+                    imageVector = MusiqueIcons.ListBulleted,
+                    contentDescription = "Playlists",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(onClick = onOpenLog) {
-                Text("日志")
+            IconButton(onClick = onOpenLog) {
+                Icon(
+                    imageVector = MusiqueIcons.MoreHoriz,
+                    contentDescription = "Debug log",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        TextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Search songs") },
+            leadingIcon = {
+                IconButton(onClick = { viewModel.search(query) }) {
+                    Icon(
+                        imageVector = MusiqueIcons.Search,
+                        contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(
+                            imageVector = MusiqueIcons.Clear,
+                            contentDescription = "Clear search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(
+                onSearch = { viewModel.search(query) },
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         when (val state = searchState) {
             SearchUiState.Idle -> {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Type a keyword and tap Search.")
+                    Text(
+                        text = "Type a keyword and search.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             SearchUiState.Loading -> {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator()
@@ -110,22 +191,33 @@ fun SearchScreen(
             }
             is SearchUiState.Empty -> {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("No songs found for \"${state.query}\".")
+                    Text(
+                        text = "No songs found for \"${state.query}\".",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             is SearchUiState.Error -> {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(state.message)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { viewModel.retry() }) {
-                            Text("Retry")
+                        IconButton(onClick = { viewModel.retry() }) {
+                            Icon(
+                                imageVector = MusiqueIcons.Refresh,
+                                contentDescription = "Retry search",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
                         }
                     }
                 }
@@ -154,12 +246,29 @@ fun SearchScreen(
                     state = listState,
                     modifier = Modifier.weight(1f),
                 ) {
-                    items(state.tracks, key = { it.key }) { track ->
-                        TrackRow(
+                    itemsIndexed(state.tracks, key = { _, track -> track.key }) { index, track ->
+                        SongRow(
                             track = track,
                             isCurrent = track.key == currentTrack?.key,
                             onClick = { viewModel.play(track) },
+                            trailing = {
+                                IconButton(onClick = { chooserTrack = track }) {
+                                    Icon(
+                                        imageVector = MusiqueIcons.AddCircleOutline,
+                                        contentDescription = "Add to playlist",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            },
                         )
+                        if (index < state.tracks.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(
+                                    start = SONG_ROW_DIVIDER_START_DP.dp,
+                                ),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
                     }
                     if (state.loadingMore) {
                         item(key = "loading-more") {
@@ -179,8 +288,8 @@ fun SearchScreen(
             }
         }
 
-        // Player error row (Step 3): a failed cid fill, URL resolve,
-        // or playback shows its message here with a Retry button.
+        // Player error row: a failed cid fill, URL resolve, or
+        // playback shows its message here with a retry icon button.
         val errorState = playerState as? PlayerUiState.Error
         if (errorState != null) {
             Row(
@@ -196,91 +305,81 @@ fun SearchScreen(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Button(onClick = { viewModel.retryPlayback() }) {
-                    Text("Retry")
+                IconButton(onClick = { viewModel.retryPlayback() }) {
+                    Icon(
+                        imageVector = MusiqueIcons.Refresh,
+                        contentDescription = "Retry playback",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }
 
-        // Mini player bar (Step 3): shows the current track, the real
-        // player state, and a play/pause toggle wired to ExoPlayer.
-        // Real progress and seek come in Step 4.
         val track = currentTrack
         if (track != null) {
             MiniPlayerBar(
                 track = track,
                 isPlaying = isPlaying,
                 playerState = playerState,
+                progress = progress,
                 onTogglePlayPause = { viewModel.togglePlayPause() },
                 onRetry = { viewModel.retryPlayback() },
                 onOpenPlayer = onOpenPlayer,
             )
         }
     }
-}
 
-@Composable
-private fun TrackRow(
-    track: Track,
-    isCurrent: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Cover (Step 1): Coil loads the Bilibili cover; tracks
-        // without a cover URL keep the first-letter placeholder.
-        if (track.cover.isNotEmpty()) {
-            AsyncImage(
-                model = track.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(48.dp),
-            )
-        } else {
-            Box(
-                modifier = Modifier.size(48.dp),
-                contentAlignment = Alignment.Center,
+    // Playlist chooser: tapping a playlist adds the track (adding a
+    // track already present is a no-op in the ViewModel) and closes.
+    val pending = chooserTrack
+    if (pending != null) {
+        ModalBottomSheet(
+            onDismissRequest = { chooserTrack = null },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
             ) {
                 Text(
-                    text = track.title.firstOrNull()?.toString() ?: "?",
+                    text = "Add to playlist",
                     style = MaterialTheme.typography.titleLarge,
-                    color = if (isCurrent) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(vertical = 8.dp),
                 )
+                playlists.forEach { playlist ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.addTrackToPlaylist(playlist.id, pending)
+                                chooserTrack = null
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = playlist.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                            )
+                            Text(
+                                text = songCountLabel(playlist.trackCount),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(
+                            imageVector = MusiqueIcons.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
             }
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 1,
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-        Text(
-            text = formatDuration(track.duration),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
