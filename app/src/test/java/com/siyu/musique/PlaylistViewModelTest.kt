@@ -212,6 +212,60 @@ class PlaylistViewModelTest {
     }
 
     @Test
+    fun `deletePlaylist cannot delete the Downloads playlist`() = runTest(testDispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.deletePlaylist(Playlist.DOWNLOADS_ID)
+        advanceUntilIdle()
+        assertEquals(listOf(Playlist.default(), Playlist.downloads(emptyList())), vm.playlists.value)
+    }
+
+    @Test
+    fun `renamePlaylist renames a user playlist and persists`() = runTest(testDispatcher) {
+        val store = InMemoryPlaylistStore()
+        val vm = viewModel(store = store)
+        advanceUntilIdle()
+        vm.createPlaylist("Temp")
+        advanceUntilIdle()
+        val createdId = vm.playlists.value.first { it.name == "Temp" }.id
+        assertTrue(vm.renamePlaylist(createdId, "  Renamed  "))
+        advanceUntilIdle()
+        val renamed = vm.playlists.value.first { it.id == createdId }
+        assertEquals("Renamed", renamed.name)
+        assertEquals("Renamed", store.load()?.first { it.id == createdId }?.name)
+    }
+
+    @Test
+    fun `renamePlaylist cannot rename the default playlist`() = runTest(testDispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        assertFalse(vm.renamePlaylist(Playlist.DEFAULT_ID, "Renamed"))
+        advanceUntilIdle()
+        assertEquals(Playlist.DEFAULT_NAME, vm.playlists.value.first { it.isDefault }.name)
+    }
+
+    @Test
+    fun `renamePlaylist cannot rename the Downloads playlist`() = runTest(testDispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        assertFalse(vm.renamePlaylist(Playlist.DOWNLOADS_ID, "Renamed"))
+        advanceUntilIdle()
+        assertEquals(Playlist.DOWNLOADS_NAME, vm.playlists.value.first { it.isDownloads }.name)
+    }
+
+    @Test
+    fun `renamePlaylist rejects blank names`() = runTest(testDispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.createPlaylist("Temp")
+        advanceUntilIdle()
+        val createdId = vm.playlists.value.first { it.name == "Temp" }.id
+        assertFalse(vm.renamePlaylist(createdId, "   "))
+        advanceUntilIdle()
+        assertEquals("Temp", vm.playlists.value.first { it.id == createdId }.name)
+    }
+
+    @Test
     fun `addTrackToPlaylist appends the track and strips its play URL`() =
         runTest(testDispatcher) {
             val store = InMemoryPlaylistStore()

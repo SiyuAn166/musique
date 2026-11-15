@@ -1450,6 +1450,37 @@ class SearchViewModel(
     }
 
     /**
+     * Renames the playlist with [playlistId] to [name]. Blank
+     * names are rejected; duplicate names are allowed, as with
+     * create. The default playlist and the synthetic Downloads
+     * playlist cannot be renamed, and an unknown id is a no-op.
+     * Returns true when the rename landed.
+     */
+    fun renamePlaylist(playlistId: String, name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            logger.w(TAG, "playlist rename rejected: blank name")
+            return false
+        }
+        if (playlistId == Playlist.DOWNLOADS_ID) {
+            logger.w(TAG, "playlist rename rejected: downloads playlist cannot be renamed")
+            return false
+        }
+        val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return false
+        if (target.isDefault) {
+            logger.w(TAG, "playlist rename rejected: default playlist cannot be renamed")
+            return false
+        }
+        val updated = _playlists.value.map { playlist ->
+            if (playlist.id == playlistId) playlist.copy(name = trimmed) else playlist
+        }
+        _playlists.value = updated
+        logger.i(TAG, "playlist renamed id=$playlistId name=\"$trimmed\"")
+        persistPlaylists(updated)
+        return true
+    }
+
+    /**
      * Whether [candidate] duplicates [existing] as a playlist
      * entry. Same bvid with the same cid (both empty included) is
      * the same entry, and different parts of one video are

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -19,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,10 +48,11 @@ import com.siyu.musique.ui.theme.MusiqueIcons
  * Long-pressing a row enters selection mode with that row
  * checked, so the trash icon is usable right away. Tapping the
  * button again leaves selection mode and clears the selection.
- * User-created playlists get a trash icon to delete the whole
- * playlist, hidden while selection mode is on so the two trash
- * icons never sit side by side; the default playlist and the
- * Downloads playlist cannot be deleted. Removing songs from the
+ * User-created playlists get an edit icon to rename the playlist
+ * and a trash icon to delete the whole playlist, both hidden
+ * while selection mode is on; the default playlist and the
+ * Downloads playlist cannot be renamed or deleted, so neither
+ * icon shows for them. Removing songs from the
  * Downloads playlist deletes the downloaded files as well. An
  * empty playlist shows a short empty message, except Downloads,
  * which shows nothing when empty. The shared mini player
@@ -78,6 +81,12 @@ fun PlaylistDetailScreen(
 
     /** Bvids whose parts are expanded in the list. Expansion hides while selecting. */
     var expandedVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    /** Whether the rename dialog is open. */
+    var showRenameDialog by remember { mutableStateOf(false) }
+
+    /** The name typed in the rename dialog, prefilled with the current name on open. */
+    var renameName by remember { mutableStateOf("") }
 
     /** The entry whose row tap is waiting on a parts load to decide between expanding and playing. */
     var pendingTapTrack by remember { mutableStateOf<Track?>(null) }
@@ -144,6 +153,18 @@ fun PlaylistDetailScreen(
                 }
             }
             if (!selecting && playlist != null && !playlist.isDefault && !playlist.isDownloads) {
+                IconButton(
+                    onClick = {
+                        renameName = playlist.name
+                        showRenameDialog = true
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Edit,
+                        contentDescription = "Rename playlist",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
                 IconButton(
                     onClick = {
                         viewModel.deletePlaylist(playlist.id)
@@ -346,6 +367,50 @@ fun PlaylistDetailScreen(
                 }
             }
         }
+    }
+
+    // Rename dialog, from the edit icon in the header. Mirrors
+    // the create-playlist dialog: the field starts with the
+    // current name, blank names are rejected, duplicate names
+    // are allowed.
+    if (showRenameDialog && playlist != null) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename playlist") },
+            text = {
+                TextField(
+                    value = renameName,
+                    onValueChange = { renameName = it },
+                    placeholder = { Text("Playlist name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                IconButton(
+                    enabled = renameName.isNotBlank(),
+                    onClick = {
+                        viewModel.renamePlaylist(playlist.id, renameName)
+                        showRenameDialog = false
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Check,
+                        contentDescription = "Rename",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            },
+            dismissButton = {
+                IconButton(onClick = { showRenameDialog = false }) {
+                    Icon(
+                        imageVector = MusiqueIcons.Clear,
+                        contentDescription = "Cancel",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            },
+        )
     }
 }
 
