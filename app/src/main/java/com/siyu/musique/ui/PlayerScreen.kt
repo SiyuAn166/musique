@@ -584,8 +584,11 @@ fun PlayerScreen(
                                         if (hasParts) {
                                             partsExpanded = !partsExpanded
                                         } else {
+                                            // The sheet stays open:
+                                            // switching songs from the
+                                            // queue must not drop back
+                                            // to the player page.
                                             viewModel.playFromQueue(sheetRow.track)
-                                            queueSheetOpen = false
                                         }
                                     },
                                     trailing = {
@@ -612,8 +615,9 @@ fun PlayerScreen(
                                 track = sheetRow.track,
                                 isCurrent = sheetRow.track.key == track?.key,
                                 onClick = {
+                                    // The sheet stays open, same as
+                                    // the video rows above.
                                     viewModel.playPart(sheetRow.track)
-                                    queueSheetOpen = false
                                 },
                                 trailing = {},
                                 modifier = Modifier.padding(

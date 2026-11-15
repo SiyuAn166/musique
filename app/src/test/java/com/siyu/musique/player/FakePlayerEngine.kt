@@ -27,6 +27,14 @@ class FakePlayerEngine : PlayerEngine {
     /** When set, [stop] throws this instead of returning normally. */
     var failStopWith: Throwable? = null
 
+    /**
+     * When true, [resume] reports onPlaying synchronously inside
+     * the call, the way the real ExoPlayer delivers
+     * onPlayWhenReadyChanged on the calling thread. Off by
+     * default: most tests drive the callbacks by hand.
+     */
+    var firePlayingOnResume: Boolean = false
+
     /** The position [currentPositionMs] reports; tests move it to simulate playback. */
     var positionMs: Long = 0L
 
@@ -63,6 +71,9 @@ class FakePlayerEngine : PlayerEngine {
 
     override fun resume() {
         resumeCalls++
+        if (firePlayingOnResume) {
+            listener?.onPlaying()
+        }
     }
 
     override fun stop() {

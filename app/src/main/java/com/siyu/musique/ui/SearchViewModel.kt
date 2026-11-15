@@ -1075,9 +1075,15 @@ class SearchViewModel(
     fun resumePlayback() {
         if (_playerState.value != PlayerUiState.Paused) return
         if (engineHasMedia) {
-            playerEngine.resume()
+            // Set the state BEFORE resuming: ExoPlayer reports
+            // onPlaying synchronously inside the resume call, so
+            // setting Buffering after it would clobber the
+            // Playing state and the mini bar would say Loading
+            // forever. playAt and refetchAndPlay already order
+            // their state writes this way.
             _playerState.value = PlayerUiState.Buffering
             _isPlaying.value = true
+            playerEngine.resume()
             logger.d(TAG, "player resume requested")
         } else {
             // Paused before the engine ever got media (e.g.
