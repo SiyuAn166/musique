@@ -300,9 +300,19 @@ class SearchViewModel(
      * The queue prev/next/auto-advance move inside: a snapshot of the
      * search list or playlist the current track was played from.
      * Mirrored in [_queue] for the queue sheet; every adoption goes
-     * through [updateQueue] so the two never drift apart.
+     * through [updateQueue] so the two never drift apart. A queue
+     * adopted from search keeps growing as more search pages load
+     * (see [extendSearchQueue]); a playlist queue never does.
      */
     private var currentQueue: List<Track> = emptyList()
+
+    /**
+     * The search query the current queue came from, or null when
+     * the queue came from a playlist, a restore, or nowhere yet.
+     * Only a queue with a matching origin grows when that
+     * search loads another page.
+     */
+    private var queueFromSearchQuery: String? = null
 
     /** The playing queue, for the queue sheet on the player page. */
     private val _queue = MutableStateFlow<List<Track>>(emptyList())
@@ -659,6 +669,7 @@ class SearchViewModel(
                     hasMore = result.hasMore,
                     loadingMore = false,
                 )
+                extendSearchQueue(result.tracks, state.query)
                 logger.i(
                     SEARCH_TAG,
                     "search page loaded query=\"${state.query}\" page=${result.page} " +
@@ -717,6 +728,7 @@ class SearchViewModel(
             return
         }
         updateQueue(playlist.tracks)
+        queueFromSearchQuery = null
         shuffleHistory.clear()
         playAt(track, startPositionMs = 0L, resumePlaying = true)
     }
@@ -837,13 +849,59 @@ class SearchViewModel(
      * When [track] is in the current search results, the search list
      * becomes the queue. When it is not (a retry, or a track played
      * while other results are showing), the queue is left alone so
-     * playlist playback survives a retry.
+     * playlist playback survives a retry. An adopted search queue
+     * remembers its query so later pages can extend it.
      */
     private fun adoptSearchQueueFor(track: Track) {
         val state = _searchState.value as? SearchUiState.Success ?: return
         if (state.tracks.any { it.id == track.id }) {
             updateQueue(state.tracks)
+            queueFromSearchQuery = state.query
             shuffleHistory.clear()
+        }
+    }
+
+    /**
+     * Grows a search-adopted queue with a newly loaded search page.
+     * Only when the queue came from this exact query: a playlist
+     * queue, a restored queue, or a queue from another query never
+     * grows. Tracks already in the queue (a re-run of the same
+     * query) are skipped, so the queue never holds a video twice.
+     * The shuffle history is untouched: growing the queue only
+     * adds candidates, it never invalidates what already played.
+     */
+    private fun extendSearchQueue(tracks: List<Track>, query: String) {
+        if (queueFromSearchQuery != query) return
+        if (currentQueue.isEmpty()) return
+        val existingIds = currentQueue.map { it.id }.toSet()
+        val appended = tracks.filter { it.id !in existingIds }
+        if (appended.isEmpty()) return
+        updateQueue(currentQueue + appended)
+        logger.i(
+            TAG,
+            "queue extended from search query=\"$query\" size=${currentQueue.size}",
+        )
+    }
+
+    /**
+     * Prefetches the next search page when playback gets close to
+     * the end of a search-adopted queue with more pages, so the
+     * queue grows before playback runs out of tracks even when
+     * the user never scrolls the search list. The load itself is
+     * [loadMore], which no-ops while a load is in flight or no
+     * pages remain, and the landed page extends the queue through
+     * [extendSearchQueue]. A no-op for playlist and restored
+     * queues, and when the search has moved on to another query.
+     */
+    private fun prefetchSearchQueueIfNeeded() {
+        val origin = queueFromSearchQuery ?: return
+        val state = _searchState.value as? SearchUiState.Success ?: return
+        if (state.query != origin || !state.hasMore) return
+        val index = indexOfCurrent()
+        if (index < 0) return
+        if (index >= currentQueue.size - QUEUE_PREFETCH_THRESHOLD) {
+            logger.d(TAG, "queue prefetch query=\"$origin\" index=$index size=${currentQueue.size}")
+            loadMore()
         }
     }
 
@@ -897,6 +955,9 @@ class SearchViewModel(
         )
         _playerState.value = PlayerUiState.Fetching
         _isPlaying.value = true
+        // Playing near the end of a search queue pulls the next
+        // search page in before playback runs out of tracks.
+        prefetchSearchQueueIfNeeded()
         playJob = viewModelScope.launch {
             try {
                 var current = track
@@ -1715,6 +1776,13 @@ class SearchViewModel(
 
         /** Cap on the shuffle history, so endless skipping cannot grow it forever. */
         private const val SHUFFLE_HISTORY_LIMIT = 50
+
+        /**
+         * How close to the end of a search queue playback must get
+         * before the next search page is prefetched, so the queue
+         * usually grows before playback runs out of tracks.
+         */
+        private const val QUEUE_PREFETCH_THRESHOLD = 3
 
         /** Keystroke quiet time before suggestions are fetched. */
         const val SUGGEST_DEBOUNCE_MS: Long = 300L
