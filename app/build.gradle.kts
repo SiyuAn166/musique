@@ -8,19 +8,38 @@ android {
     namespace = "com.siyu.musique"
     compileSdk = 36
 
+    // One persistent signing key for every debug build (the only
+    // kind CI produces). CI runners are ephemeral, so the
+    // default debug key changed on every run and Android
+    // rejected updates as a signature mismatch. This keystore
+    // lives in this private repo; never regenerate it, or
+    // installed copies will refuse the next update. The
+    // passwords live here too: the repo is private and solo,
+    // and a public repo would need a fresh key anyway.
+    signingConfigs {
+        create("musique") {
+            storeFile = file("../keystore/musique.keystore")
+            storePassword = "pGdMxgC2pDRC2dzWBKRu566i"
+            keyAlias = "musique"
+            keyPassword = "pGdMxgC2pDRC2dzWBKRu566i"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.siyu.musique"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        // Development version only. Standing rule: tag a version only when
-        // its features are complete, never one version per commit. Step 0
-        // gets no version tag; v0.1 is tagged only when search and play
-        // are complete and tested.
+        // v0.1.0 tagged Nov 15, 2026. Standing rule: tag a version
+        // only when its features are complete, never one version
+        // per commit.
         versionName = "0.1.0"
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("musique")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
