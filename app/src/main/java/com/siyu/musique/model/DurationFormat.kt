@@ -21,6 +21,14 @@ fun formatDuration(duration: Duration): String {
 }
 
 /**
+ * Remaining time as a negative "M:SS" ("-2:31"), the way the player
+ * page shows it next to the slider. A position past the duration
+ * reads as "-0:00", never a negative time.
+ */
+fun formatRemaining(duration: Duration, position: Duration): String =
+    "-${formatDuration(duration - position)}"
+
+/**
  * Parses the duration text Bilibili search results report: total
  * minutes as "M:SS", where minutes can exceed 60 ("419:2", "829:59")
  * and seconds may be a single digit. A three-part "H:MM:SS" form is
