@@ -1,6 +1,7 @@
 package com.siyu.musique.data
 
 import android.content.Context
+import androidx.media3.datasource.cache.SimpleCache
 import com.siyu.musique.core.network.ApiService
 import com.siyu.musique.core.network.BiliBootstrap
 import com.siyu.musique.core.network.BiliClient
@@ -20,9 +21,17 @@ import com.siyu.musique.player.PlayerEngine
  */
 object BiliDependencies {
 
+    /** The shared audio cache. Build once and hand the same instance to the engine and to the app cache, so the settings size is what playback stored. */
+    fun createAudioCache(context: Context): SimpleCache =
+        ExoPlayerEngine.newCache(context.applicationContext)
+
     /** The ExoPlayer engine. Build once, on the main thread, and keep it for the Activity's life. */
-    fun createPlayerEngine(context: Context): PlayerEngine =
-        ExoPlayerEngine(context.applicationContext)
+    fun createPlayerEngine(context: Context, audioCache: SimpleCache): PlayerEngine =
+        ExoPlayerEngine(context.applicationContext, audioCache)
+
+    /** The app caches (audio + covers), for the settings screen's size and clear button. */
+    fun createAppCache(context: Context, audioCache: SimpleCache): AppCache =
+        AndroidAppCache(context.applicationContext, audioCache)
 
     /** The persisted audio quality preference, read by the ViewModel at startup. */
     fun createQualityPreferenceStore(context: Context): QualityPreferenceStore =

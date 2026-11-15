@@ -10,6 +10,8 @@ import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliNetworkException
 import com.siyu.musique.core.network.BiliParseException
+import com.siyu.musique.data.AppCache
+import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
@@ -150,6 +152,7 @@ class SearchViewModel(
     private val qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
     private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
+    private val appCache: AppCache = InMemoryAppCache(),
     private val random: Random = Random.Default,
 ) : ViewModel() {
 
@@ -188,6 +191,14 @@ class SearchViewModel(
     /** The playlists in creation order, default first. Empty only until the initial load lands. */
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
     val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
+
+    /** Total cached bytes (audio + covers), null until first measured. */
+    private val _cacheSizeBytes = MutableStateFlow<Long?>(null)
+    val cacheSizeBytes: StateFlow<Long?> = _cacheSizeBytes.asStateFlow()
+
+    /** Whether a cache clear is running; the settings screen disables its clear button meanwhile. */
+    private val _clearingCache = MutableStateFlow(false)
+    val clearingCache: StateFlow<Boolean> = _clearingCache.asStateFlow()
 
     /** The app log lines, for the log screen. */
     val logLines: StateFlow<List<LogLine>> = logger.buffer.snapshot
@@ -415,10 +426,15 @@ class SearchViewModel(
      * state are set synchronously so a tap never looks dead; failures
      * land in [PlayerUiState.Error]. When [track] is in the current
      * search results, the search list becomes the queue; otherwise
-     * the queue is left alone.
+     * the queue is left alone. Tapping the track that is already
+     * loaded is a no-op: only switching songs restarts playback.
      */
     fun play(track: Track) {
         logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid}")
+        if (isCurrentTrack(track)) {
+            logger.i(TAG, "play ignored: already current bvid=${track.id} cid=${track.cid}")
+            return
+        }
         adoptSearchQueueFor(track)
         playAt(track, startPositionMs = 0L, resumePlaying = true, adoptPartsQueue = true)
     }
@@ -428,7 +444,8 @@ class SearchViewModel(
      * as [play], with the playlist's tracks (a snapshot at play time)
      * as the queue. Later edits to the playlist do not rewrite the
      * in-flight queue. A track with an empty cid resolves its
-     * details first, through the existing flow.
+     * details first, through the existing flow. Tapping the track
+     * that is already loaded is a no-op, same as [play].
      */
     fun playFromPlaylist(track: Track, playlist: Playlist) {
         logger.i(
@@ -436,6 +453,10 @@ class SearchViewModel(
             "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid} " +
                 "playlist=${playlist.id}",
         )
+        if (isCurrentTrack(track)) {
+            logger.i(TAG, "play ignored: already current bvid=${track.id} cid=${track.cid}")
+            return
+        }
         currentQueue = playlist.tracks
         shuffleHistory.clear()
         playAt(track, startPositionMs = 0L, resumePlaying = true)
@@ -449,6 +470,21 @@ class SearchViewModel(
     private fun playKeepingQueue(track: Track) {
         logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid}")
         playAt(track, startPositionMs = 0L, resumePlaying = true)
+    }
+
+    /**
+     * True when [track] is the track already loaded in the engine,
+     * so tapping it must change nothing. Same video, and the same
+     * part when both sides name one: a row whose cid is still empty
+     * names the video itself, which is what the resolve would play,
+     * so it counts as the same track. The error state is excluded:
+     * after a failure the tap retries instead of doing nothing.
+     */
+    private fun isCurrentTrack(track: Track): Boolean {
+        val current = _currentTrack.value ?: return false
+        if (_playerState.value is PlayerUiState.Error) return false
+        if (current.id != track.id) return false
+        return current.cid.isEmpty() || track.cid.isEmpty() || current.cid == track.cid
     }
 
     /**
@@ -635,7 +671,10 @@ class SearchViewModel(
                 } else {
                     // Paused before the engine ever got media (e.g.
                     // paused while fetching): replay the track.
-                    _currentTrack.value?.let { play(it) }
+                    // Through playKeepingQueue, not play: the tap
+                    // guard in play would treat this as a re-tap
+                    // of the current track and do nothing.
+                    _currentTrack.value?.let { playKeepingQueue(it) }
                 }
             }
             PlayerUiState.Fetching -> {
@@ -822,6 +861,32 @@ class SearchViewModel(
         logger.buffer.clear()
     }
 
+    /** Measures the caches (audio + covers) for the settings screen. A failure leaves the last known size untouched. */
+    fun loadCacheSize() {
+        viewModelScope.launch {
+            runCatching { appCache.sizeBytes() }
+                .onSuccess { _cacheSizeBytes.value = it }
+                .onFailure {
+                    logger.w("Cache", "cache size failed (${it::class.simpleName})")
+                }
+        }
+    }
+
+    /** Clears the caches (audio + covers), then re-measures so the settings screen shows the freed size. Ignored while a clear is already running. */
+    fun clearCache() {
+        if (_clearingCache.value) return
+        viewModelScope.launch {
+            _clearingCache.value = true
+            runCatching { appCache.clear() }
+                .onSuccess { logger.i("Cache", "cache cleared") }
+                .onFailure {
+                    logger.w("Cache", "cache clear failed (${it::class.simpleName})")
+                }
+            _clearingCache.value = false
+            loadCacheSize()
+        }
+    }
+
     override fun onCleared() {
         playJob?.cancel()
         progressJob?.cancel()
@@ -973,13 +1038,14 @@ fun mapSearchError(error: Throwable, query: String): SearchUiState.Error {
 /** Maps a playback failure (detail or play URL resolution) onto the message the player error state shows. */
 fun mapPlayerError(error: Throwable): String = describeFailure(error).first
 
-/** Factory carrying the repository, the player engine, and the quality, playlist, and playback mode stores into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, the app cache, and the quality, playlist, and playback mode stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
     private val qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
     private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
+    private val appCache: AppCache = InMemoryAppCache(),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -993,6 +1059,7 @@ class SearchViewModelFactory(
             qualityPreferenceStore,
             playlistStore,
             playbackModeStore,
+            appCache,
         ) as T
     }
 }

@@ -32,15 +32,12 @@ import java.io.File
  * so it cannot compile under kotlinc here. Construct and call it on
  * the main thread.
  */
-class ExoPlayerEngine(context: Context) : PlayerEngine {
+class ExoPlayerEngine(
+    context: Context,
+    private val cache: SimpleCache = newCache(context),
+) : PlayerEngine {
 
     private var listener: PlayerEngine.Listener? = null
-
-    private val cache: SimpleCache = SimpleCache(
-        File(context.cacheDir, CACHE_DIR),
-        LeastRecentlyUsedCacheEvictor(CACHE_SIZE_BYTES),
-        StandaloneDatabaseProvider(context),
-    )
 
     private val mediaSourceFactory: ProgressiveMediaSource.Factory =
         ProgressiveMediaSource.Factory(
@@ -133,6 +130,13 @@ class ExoPlayerEngine(context: Context) : PlayerEngine {
 
     companion object {
         private const val TAG = "Player"
+
+        /** Build the shared audio cache. The wiring builds it once and hands the same instance to the engine and to the cache settings, so the reported size is what playback stored. */
+        fun newCache(context: Context): SimpleCache = SimpleCache(
+            File(context.cacheDir, CACHE_DIR),
+            LeastRecentlyUsedCacheEvictor(CACHE_SIZE_BYTES),
+            StandaloneDatabaseProvider(context),
+        )
 
         const val CACHE_DIR = "exo_audio_cache"
 

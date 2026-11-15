@@ -75,6 +75,7 @@ fun SearchScreen(
     onOpenPlayer: () -> Unit,
     onOpenPlaylists: () -> Unit,
     onOpenLog: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
@@ -88,7 +89,7 @@ fun SearchScreen(
     /** The track waiting for a playlist choice, or null when the chooser is closed. */
     var chooserTrack by remember { mutableStateOf<Track?>(null) }
 
-    /** Whether the settings (three-dot) menu is open. The debug log lives inside it. */
+    /** Whether the settings (three-dot) menu is open. Settings and the debug log live inside it. */
     var settingsMenuExpanded by remember { mutableStateOf(false) }
 
     Column(
@@ -122,6 +123,13 @@ fun SearchScreen(
                     expanded = settingsMenuExpanded,
                     onDismissRequest = { settingsMenuExpanded = false },
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Settings") },
+                        onClick = {
+                            settingsMenuExpanded = false
+                            onOpenSettings()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Debug log") },
                         onClick = {

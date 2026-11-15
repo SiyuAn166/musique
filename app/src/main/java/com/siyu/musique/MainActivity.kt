@@ -33,7 +33,9 @@ class MainActivity : ComponentActivity() {
         AndroidLogSink.install()
         MusiqueLog.i("App", "Musique started")
         val repository = BiliDependencies.createSearchRepository(applicationContext)
-        val playerEngine = BiliDependencies.createPlayerEngine(applicationContext)
+        val audioCache = BiliDependencies.createAudioCache(applicationContext)
+        val playerEngine = BiliDependencies.createPlayerEngine(applicationContext, audioCache)
+        val appCache = BiliDependencies.createAppCache(applicationContext, audioCache)
         val qualityPreferenceStore =
             BiliDependencies.createQualityPreferenceStore(applicationContext)
         val playlistStore = BiliDependencies.createPlaylistStore(applicationContext)
@@ -42,6 +44,7 @@ class MainActivity : ComponentActivity() {
             MusiqueApp(
                 repository = repository,
                 playerEngine = playerEngine,
+                appCache = appCache,
                 qualityPreferenceStore = qualityPreferenceStore,
                 playlistStore = playlistStore,
                 playbackModeStore = playbackModeStore,

@@ -11,6 +11,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.siyu.musique.data.AppCache
+import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
@@ -25,8 +27,9 @@ import com.siyu.musique.ui.theme.MusiqueTheme
 /**
  * App navigation: a single Activity hosting a NavHost. "search" is
  * the start destination; "player" is the player page; "log" is the
- * debug log screen; "playlists" lists the playlists; "playlist/{id}"
- * is one playlist's detail screen. The ViewModel is shared between
+ * debug log screen; "settings" is the settings screen; "playlists"
+ * lists the playlists; "playlist/{id}" is one playlist's detail
+ * screen. The ViewModel is shared between
  * the screens and is built with the repository, player engine, and
  * stores the Activity hands in. Playlist ids are UUIDs or "default",
  * so they are safe to carry in a route.
@@ -35,6 +38,7 @@ import com.siyu.musique.ui.theme.MusiqueTheme
 fun MusiqueApp(
     repository: SearchRepository,
     playerEngine: PlayerEngine = NoOpPlayerEngine,
+    appCache: AppCache = InMemoryAppCache(),
     qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
     playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
@@ -48,6 +52,7 @@ fun MusiqueApp(
             qualityPreferenceStore,
             playlistStore,
             playbackModeStore,
+            appCache,
         ),
     )
 
@@ -69,6 +74,7 @@ fun MusiqueApp(
                     onOpenPlayer = { navController.navigate("player") },
                     onOpenPlaylists = { navController.navigate("playlists") },
                     onOpenLog = { navController.navigate("log") },
+                    onOpenSettings = { navController.navigate("settings") },
                 )
             }
             composable("player") {
@@ -79,6 +85,12 @@ fun MusiqueApp(
             }
             composable("log") {
                 LogScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("settings") {
+                SettingsScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
                 )
