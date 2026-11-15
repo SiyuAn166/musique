@@ -12,29 +12,35 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.siyu.musique.data.AppCache
+import com.siyu.musique.data.AudioFileDownloader
+import com.siyu.musique.data.DownloadStore
 import com.siyu.musique.data.InMemoryAppCache
+import com.siyu.musique.data.InMemoryDownloadStore
 import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
+import com.siyu.musique.data.NoOpAudioFileDownloader
 import com.siyu.musique.data.PlaybackModeStore
 import com.siyu.musique.data.PlaybackStateStore
 import com.siyu.musique.data.PlaylistStore
 import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
+import com.siyu.musique.data.defaultDownloadsDir
 import com.siyu.musique.player.NoOpPlayerEngine
 import com.siyu.musique.player.PlayerEngine
 import com.siyu.musique.ui.theme.MusiqueTheme
+import java.io.File
 
 /**
  * App navigation: a single Activity hosting a NavHost. "search" is
  * the start destination; "player" is the player page; "log" is the
  * debug log screen; "settings" is the settings screen; "playlists"
  * lists the playlists; "playlist/{id}" is one playlist's detail
- * screen. The ViewModel is shared between
- * the screens and is built with the repository, player engine, and
- * stores the Activity hands in. Playlist ids are UUIDs or "default",
- * so they are safe to carry in a route.
+ * screen; "downloads" lists the downloaded songs. The ViewModel is
+ * shared between the screens and is built with the repository,
+ * player engine, and stores the Activity hands in. Playlist ids
+ * are UUIDs or "default", so they are safe to carry in a route.
  */
 @Composable
 fun MusiqueApp(
@@ -45,6 +51,9 @@ fun MusiqueApp(
     playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
+    downloadStore: DownloadStore = InMemoryDownloadStore(),
+    audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
+    downloadsDir: File = defaultDownloadsDir(),
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
@@ -57,6 +66,9 @@ fun MusiqueApp(
             playbackModeStore,
             appCache,
             playbackStateStore,
+            downloadStore,
+            audioFileDownloader,
+            downloadsDir,
         ),
     )
 
@@ -81,6 +93,14 @@ fun MusiqueApp(
                     },
                     onOpenLog = { navController.navigate("log") },
                     onOpenSettings = { navController.navigate("settings") },
+                    onOpenDownloads = { navController.navigate("downloads") },
+                )
+            }
+            composable("downloads") {
+                DownloadsScreen(
+                    viewModel = viewModel,
+                    onOpenPlayer = { navController.navigate("player") },
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable("player") {

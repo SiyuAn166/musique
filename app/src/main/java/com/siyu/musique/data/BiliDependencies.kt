@@ -2,6 +2,7 @@ package com.siyu.musique.data
 
 import android.content.Context
 import androidx.media3.datasource.cache.SimpleCache
+import java.io.File
 import com.siyu.musique.core.network.ApiService
 import com.siyu.musique.core.network.BiliBootstrap
 import com.siyu.musique.core.network.BiliClient
@@ -59,6 +60,18 @@ object BiliDependencies {
     /** The persisted playback state (queue, track, position), restored by the ViewModel at startup. */
     fun createPlaybackStateStore(context: Context): PlaybackStateStore =
         DataStorePlaybackStateStore(context.applicationContext)
+
+    /** The persisted download records, read by the ViewModel at startup. */
+    fun createDownloadStore(context: Context): DownloadStore =
+        DataStoreDownloadStore(context.applicationContext)
+
+    /** The audio file downloader, streaming CDN bytes to files in the downloads dir. */
+    fun createAudioFileDownloader(): AudioFileDownloader =
+        OkHttpAudioFileDownloader(OkHttpGateway.defaultClient())
+
+    /** The app-private downloads dir, under filesDir: uninstall deletes it with everything else. */
+    fun downloadsDir(context: Context): File =
+        File(context.applicationContext.filesDir, DOWNLOADS_DIR_NAME)
 
     fun createSearchRepository(context: Context): SearchRepository {
         val appContext = context.applicationContext

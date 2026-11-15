@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,9 +65,12 @@ import kotlin.time.Duration.Companion.milliseconds
  * elapsed time left and remaining (negative) time right, black
  * skip icons around one large black pause circle, a full-width
  * slim volume slider with speaker icons at both ends, and the
- * quality chip at the bottom right, with the queue button at
- * the bottom left: it opens a sheet listing the playing queue,
- * the current track highlighted, tapping a row jumps to it.
+ * quality chip at the bottom right, with the queue button and
+ * the download button at the bottom left: the queue button opens
+ * a sheet listing the playing queue, the current track
+ * highlighted, tapping a row jumps to it; the download button
+ * downloads the current track at the current quality (a spinner
+ * while downloading, a check once it is downloaded).
  * The controls row is shuffle, skip-previous, the pause circle,
  * skip-next, repeat: the shuffle and repeat buttons are grey
  * when off and black when on, and the repeat button cycles
@@ -95,6 +99,9 @@ fun PlayerScreen(
     val shuffleEnabled by viewModel.shuffleEnabled.collectAsStateWithLifecycle()
     val queue by viewModel.queue.collectAsStateWithLifecycle()
     val currentParts by viewModel.currentParts.collectAsStateWithLifecycle()
+    val downloadRecords by viewModel.downloadRecords.collectAsStateWithLifecycle()
+    val downloadProgress by viewModel.downloadProgress.collectAsStateWithLifecycle()
+    val resolvedQualityId by viewModel.resolvedQualityId.collectAsStateWithLifecycle()
 
     /** The dragged position while the user holds the slider, or null when not dragging. */
     var dragPositionMs by remember { mutableStateOf<Long?>(null) }
@@ -377,13 +384,87 @@ fun PlayerScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { queueSheetOpen = true }) {
-                Icon(
-                    imageVector = MusiqueIcons.QueueMusic,
-                    contentDescription = "Queue",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp),
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { queueSheetOpen = true }) {
+                    Icon(
+                        imageVector = MusiqueIcons.QueueMusic,
+                        contentDescription = "Queue",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                // Download: a spinner while this track downloads, a
+                // check when the current quality is downloaded
+                // (tapping it does nothing), the download icon
+                // otherwise (tapping it downloads, or retries
+                // after a failure). Progress entries are keyed by
+                // track key while resolving, then by track key
+                // plus quality id, so both shapes belong here.
+                val trackKey = track?.key
+                val downloadingEntry = if (trackKey != null) {
+                    downloadProgress.entries.firstOrNull { (key, value) ->
+                        !value.failed &&
+                            (key == trackKey || key.startsWith("$trackKey:"))
+                    }?.value
+                } else {
+                    null
+                }
+                val isDownloaded = track != null && downloadRecords.any { record ->
+                    record.track.key == track.key &&
+                        (resolvedQualityId == null || record.qualityId == resolvedQualityId)
+                }
+                when {
+                    track == null -> {
+                        IconButton(onClick = {}, enabled = false) {
+                            Icon(
+                                imageVector = MusiqueIcons.Download,
+                                contentDescription = "Download",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                    alpha = 0.4f,
+                                ),
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                    isDownloaded -> {
+                        IconButton(onClick = {}) {
+                            Icon(
+                                imageVector = MusiqueIcons.Check,
+                                contentDescription = "Downloaded",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                    downloadingEntry != null -> {
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val fraction = downloadingEntry.fraction
+                            if (fraction != null) {
+                                CircularProgressIndicator(
+                                    progress = { fraction },
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            } else {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
+                    }
+                    else -> {
+                        IconButton(onClick = { viewModel.downloadTrack(track) }) {
+                            Icon(
+                                imageVector = MusiqueIcons.Download,
+                                contentDescription = "Download",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                }
             }
             Box {
                 Surface(

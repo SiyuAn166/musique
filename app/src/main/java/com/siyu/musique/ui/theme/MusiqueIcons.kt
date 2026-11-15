@@ -152,6 +152,12 @@ object MusiqueIcons {
         "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
     )
 
+    /** Down arrow into a tray: download the current track on the player page. */
+    val Download: ImageVector = icon(
+        "Download",
+        "M5,20h14v-2H5V20z M19,9h-4V3H9v6H5l7,7L19,9z",
+    )
+
     private fun icon(name: String, pathData: String): ImageVector =
         ImageVector.Builder(
             name = name,

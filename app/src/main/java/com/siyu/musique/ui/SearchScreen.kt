@@ -83,8 +83,9 @@ private const val ADD_NOTICE_BOTTOM_OFFSET_DP: Int = 88
 
 /**
  * Search screen: the script "Musique" wordmark at the top left
- * with the three-dot icon (settings menu, with the debug log
- * inside) at the top right, a light-grey capsule search field,
+ * with the three-dot icon at the top right (menu: downloads,
+ * settings, and the debug log inside), a light-grey capsule
+ * search field,
  * and flat result rows with hairline dividers. Search
  * triggers on the keyboard search action and on tapping the
  * magnifier icon. Typing shows a suggestion dropdown from
@@ -107,6 +108,7 @@ fun SearchScreen(
     onOpenPlaylistDetail: (String) -> Unit = {},
     onOpenLog: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenDownloads: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
@@ -188,6 +190,13 @@ fun SearchScreen(
                     expanded = settingsMenuExpanded,
                     onDismissRequest = { settingsMenuExpanded = false },
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Downloads") },
+                        onClick = {
+                            settingsMenuExpanded = false
+                            onOpenDownloads()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Settings") },
                         onClick = {

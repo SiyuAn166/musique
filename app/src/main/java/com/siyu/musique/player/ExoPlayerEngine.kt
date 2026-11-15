@@ -8,8 +8,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.siyu.musique.core.logging.MusiqueLog
 
 /**
@@ -26,7 +28,10 @@ import com.siyu.musique.core.logging.MusiqueLog
  * listener; the player itself lives until the service is
  * destroyed. Song info travels on the media item as Media3
  * metadata, so the notification and lock screen show the title,
- * artist, and cover.
+ * artist, and cover. Downloaded files play from file:// URLs
+ * through a FileDataSource media source: the player's
+ * CacheDataSource factory hands cache misses to an HTTP
+ * upstream that cannot open file URLs.
  *
  * Statically reviewed only: it needs an Android Context and
  * Media3, so it cannot compile under kotlinc here. Construct
@@ -75,11 +80,16 @@ class ExoPlayerEngine(
     }
 
     override fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata?) {
-        // Diagnostic for the audio cache: how many bytes of this
-        // key are already stored before the stream starts. The key
-        // holds bvid + cid + quality only, never the URL.
-        val cachedBytes = cache.getCachedLength(cacheKey, 0L, Long.MAX_VALUE)
-        MusiqueLog.i(TAG, "audio cache $cachedBytes bytes stored key=$cacheKey")
+        val isLocalFile = Uri.parse(url).scheme == "file"
+        if (!isLocalFile) {
+            // Diagnostic for the audio cache: how many bytes of this
+            // key are already stored before the stream starts. The key
+            // holds bvid + cid + quality only, never the URL. Local
+            // files skip the cache entirely, so there is nothing to
+            // measure for them.
+            val cachedBytes = cache.getCachedLength(cacheKey, 0L, Long.MAX_VALUE)
+            MusiqueLog.i(TAG, "audio cache $cachedBytes bytes stored key=$cacheKey")
+        }
         val metadataBuilder = MediaMetadata.Builder()
         metadata?.let {
             metadataBuilder.setTitle(it.title)
@@ -93,7 +103,16 @@ class ExoPlayerEngine(
             .setCustomCacheKey(cacheKey)
             .setMediaMetadata(metadataBuilder.build())
             .build()
-        player.setMediaItem(item)
+        if (isLocalFile) {
+            // Setting a media source built with the file factory
+            // overrides the builder's CacheDataSource factory for
+            // this item only; network items below keep using it.
+            val source = ProgressiveMediaSource.Factory(FileDataSource.Factory())
+                .createMediaSource(item)
+            player.setMediaSource(source)
+        } else {
+            player.setMediaItem(item)
+        }
         player.prepare()
         player.playWhenReady = true
         ensureServiceRunning()

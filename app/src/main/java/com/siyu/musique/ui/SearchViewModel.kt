@@ -11,11 +11,18 @@ import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliNetworkException
 import com.siyu.musique.core.network.BiliParseException
 import com.siyu.musique.data.AppCache
+import com.siyu.musique.data.AudioFileDownloader
+import com.siyu.musique.data.DownloadRecord
+import com.siyu.musique.data.DownloadStore
 import com.siyu.musique.data.InMemoryAppCache
+import com.siyu.musique.data.InMemoryDownloadStore
 import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
+import com.siyu.musique.data.NoOpAudioFileDownloader
+import com.siyu.musique.data.defaultDownloadsDir
+import com.siyu.musique.data.downloadFileName
 import com.siyu.musique.data.PlaybackMode
 import com.siyu.musique.data.PlaybackModeStore
 import com.siyu.musique.data.PlaybackStateStore
@@ -40,6 +47,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 import kotlin.random.Random
 
 /** Why a search failed, so the UI shows a distinct message per kind. */
@@ -113,6 +121,14 @@ sealed interface PlayerUiState {
 data class PlaybackProgress(val positionMs: Long, val durationMs: Long)
 
 /**
+ * Download progress for one (track, quality) pair. [fraction] is
+ * 0..1 while downloading, null when the total size is unknown or
+ * the stream has not resolved yet; [failed] is true after an
+ * error, until a retry starts.
+ */
+data class DownloadProgress(val fraction: Float?, val failed: Boolean = false)
+
+/**
  * Holds search state, the current queue, and playback state.
  *
  * Step 3: tapping a track fills in its cid when missing, resolves a
@@ -150,6 +166,13 @@ data class PlaybackProgress(val positionMs: Long, val durationMs: Long)
  * [playFromPlaylist]. Previous/next/auto-advance move inside that
  * snapshot only; later edits to the playlist do not rewrite the
  * in-flight queue. The queue is empty until the first play.
+ *
+ * Downloads: [downloadTrack] streams a track's audio at the
+ * current quality preference into [downloadsDir] (app-private,
+ * deleted on uninstall) and records it in [downloadStore].
+ * Playback prefers a downloaded file over the network, and a
+ * local file that fails to play is deleted with its record and
+ * falls back to the network once, for the same intent.
  */
 class SearchViewModel(
     private val repository: SearchRepository,
@@ -160,6 +183,9 @@ class SearchViewModel(
     private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     private val appCache: AppCache = InMemoryAppCache(),
     private val playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
+    private val downloadStore: DownloadStore = InMemoryDownloadStore(),
+    private val audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
+    private val downloadsDir: File = defaultDownloadsDir(),
     private val random: Random = Random.Default,
 ) : ViewModel(), PlaybackControls {
 
@@ -188,6 +214,24 @@ class SearchViewModel(
     /** Label of the resolved stream for the current track ("192K", "Hi-Res"), null before resolve. */
     private val _resolvedQualityLabel = MutableStateFlow<String?>(null)
     val resolvedQualityLabel: StateFlow<String?> = _resolvedQualityLabel.asStateFlow()
+
+    /** The resolved DASH stream id for the current track, null before resolve. The download button compares it against the stored records. */
+    private val _resolvedQualityId = MutableStateFlow<Int?>(null)
+    val resolvedQualityId: StateFlow<Int?> = _resolvedQualityId.asStateFlow()
+
+    /** The downloaded files, in download order. Empty until the initial load lands. */
+    private val _downloadRecords = MutableStateFlow<List<DownloadRecord>>(emptyList())
+    val downloadRecords: StateFlow<List<DownloadRecord>> = _downloadRecords.asStateFlow()
+
+    /**
+     * Downloads in flight or failed, keyed by track key while the
+     * stream resolves, then by track key plus quality id (see
+     * [downloadProgressKey]). Entries leave when the download
+     * finishes; failed entries stay until a retry starts.
+     */
+    private val _downloadProgress = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
+    val downloadProgress: StateFlow<Map<String, DownloadProgress>> =
+        _downloadProgress.asStateFlow()
 
     private val _repeatMode = MutableStateFlow(RepeatMode.OFF)
     val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
@@ -286,6 +330,17 @@ class SearchViewModel(
     /** Whether the engine currently holds a loaded item (so resume works after pause). */
     private var engineHasMedia: Boolean = false
 
+    /** Download jobs in flight, keyed by track key: a second tap while downloading is ignored. */
+    private val downloadJobs = mutableMapOf<String, Job>()
+
+    /**
+     * The record the engine is currently playing from a file, or
+     * null when it plays a network stream. Cleared on every new
+     * intent: a local file that errors is deleted with its record
+     * and falls back to the network, once.
+     */
+    private var playingLocalRecord: DownloadRecord? = null
+
     init {
         // The background service's media session routes
         // notification, lock screen, and headset commands here.
@@ -363,6 +418,15 @@ class SearchViewModel(
                 persistPlaylists(deduped)
             }
         }
+        viewModelScope.launch {
+            val stored = runCatching { downloadStore.load() }
+                .onFailure {
+                    logger.w(DOWNLOAD_TAG, "download load failed (${it::class.simpleName})")
+                }
+                .getOrNull() ?: emptyList()
+            _downloadRecords.value = stored
+            cleanupOrphanDownloads(stored)
+        }
         playerEngine.setListener(object : PlayerEngine.Listener {
             override fun onBuffering() {
                 if (engineIntent != playIntent) return
@@ -423,7 +487,22 @@ class SearchViewModel(
                     "player error intent=$playIntent http=${error.isHttpFailure} " +
                         "message=${error.message}",
                 )
-                if (error.isHttpFailure && !refetchedForIntent) {
+                val localRecord = playingLocalRecord
+                if (!refetchedForIntent && (error.isHttpFailure || localRecord != null)) {
+                    if (localRecord != null) {
+                        // Self-healing: the local file failed
+                        // (missing or corrupt), so drop it and its
+                        // record, then fall back to the network for
+                        // this intent, once, like the HTTP retry.
+                        playingLocalRecord = null
+                        removeDownloadFile(localRecord)
+                        removeDownloadRecord(localRecord)
+                        logger.i(
+                            DOWNLOAD_TAG,
+                            "local file failed, falling back to network " +
+                                "key=${localRecord.track.key} quality=${localRecord.qualityId}",
+                        )
+                    }
                     refetchedForIntent = true
                     refetchAndPlay(playIntent)
                 } else {
@@ -654,6 +733,24 @@ class SearchViewModel(
     }
 
     /**
+     * Play [track] from the downloads screen: the downloads list
+     * (one entry per song, in download order) becomes the queue.
+     * Playback prefers the downloaded file, through the same
+     * local check as every other play path. Tapping the track
+     * that is already loaded is a no-op, same as [play].
+     */
+    fun playFromDownloads(track: Track) {
+        logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid} downloads")
+        if (isCurrentTrack(track)) {
+            logger.i(TAG, "play ignored: already current bvid=${track.id} cid=${track.cid}")
+            return
+        }
+        updateQueue(_downloadRecords.value.map { it.track }.distinctBy { it.key })
+        shuffleHistory.clear()
+        playAt(track, startPositionMs = 0L, resumePlaying = true)
+    }
+
+    /**
      * Play [track] without touching the queue: previous/next,
      * auto-advance, and playback retry keep moving inside the queue
      * the current track came from. [startPositionMs] resumes into
@@ -735,7 +832,9 @@ class SearchViewModel(
         playIntent++
         val intent = playIntent
         refetchedForIntent = false
+        playingLocalRecord = null
         _resolvedQualityLabel.value = null
+        _resolvedQualityId.value = null
         playJob?.cancel()
         try {
             playerEngine.stop()
@@ -780,18 +879,41 @@ class SearchViewModel(
                     }
                     _currentTrack.value = current
                 }
-                val stream = repository.fetchPlayUrl(current, _qualityPreference.value)
-                if (intent != playIntent) return@launch
-                _resolvedQualityLabel.value = AudioQuality.labelForStreamId(stream.qualityId)
-                _currentTrack.value = current.copy(playUrl = stream.baseUrl)
+                // A downloaded file wins over the network: the
+                // current-quality file first, then any downloaded
+                // file for the track, then the normal network path.
+                val local = findLocalFile(current)
+                val playUrl: String
+                val qualityId: Int
+                if (local != null) {
+                    playUrl = File(downloadsDir, local.fileName).toURI().toString()
+                    qualityId = local.qualityId
+                    playingLocalRecord = local
+                } else {
+                    val stream = repository.fetchPlayUrl(current, _qualityPreference.value)
+                    if (intent != playIntent) return@launch
+                    playUrl = stream.baseUrl
+                    qualityId = stream.qualityId
+                }
+                _resolvedQualityLabel.value = AudioQuality.labelForStreamId(qualityId)
+                _resolvedQualityId.value = qualityId
+                _currentTrack.value = current.copy(playUrl = if (local != null) "" else playUrl)
                 engineIntent = intent
                 engineHasMedia = true
                 playerEngine.play(
-                    stream.baseUrl,
-                    cacheKey(current, stream.qualityId),
+                    playUrl,
+                    cacheKey(current, qualityId),
                     PlayerMediaMetadata(current.title, current.artist, current.cover),
                 )
-                logger.i(TAG, "player play intent=$intent quality=${stream.qualityId}")
+                if (local != null) {
+                    logger.i(
+                        TAG,
+                        "player play local intent=$intent quality=$qualityId " +
+                            "file=${local.fileName}",
+                    )
+                } else {
+                    logger.i(TAG, "player play intent=$intent quality=$qualityId")
+                }
                 if (startPositionMs > 0) {
                     playerEngine.seekTo(startPositionMs)
                     publishProgress()
@@ -1127,6 +1249,213 @@ class SearchViewModel(
         persistPlaylists(updated)
     }
 
+    /**
+     * Downloads [track] at the current quality preference: the
+     * details call first when the cid is missing, then a fresh
+     * play URL, then the bytes streamed to a file in the
+     * downloads dir. Progress lands in [downloadProgress]; a
+     * failure deletes the partial file and marks the entry
+     * failed, and tapping again retries. A track already
+     * downloaded at the resolved quality is a no-op, as is a
+     * second tap while a download is in flight.
+     */
+    fun downloadTrack(track: Track) {
+        val jobKey = track.key
+        if (downloadJobs[jobKey]?.isActive == true) return
+        downloadJobs[jobKey] = viewModelScope.launch {
+            var target: File? = null
+            var downloaded = false
+            var progressKey = jobKey
+            try {
+                publishDownloadProgress(jobKey, DownloadProgress(fraction = null))
+                var current = track
+                if (current.cid.isEmpty()) {
+                    current = repository.fetchDetail(current).track
+                }
+                val stream = repository.fetchPlayUrl(current, _qualityPreference.value)
+                progressKey = downloadProgressKey(current.key, stream.qualityId)
+                if (progressKey != jobKey) {
+                    removeDownloadProgress(jobKey)
+                }
+                val existing = _downloadRecords.value.firstOrNull {
+                    it.track.key == current.key && it.qualityId == stream.qualityId
+                }
+                if (existing != null && File(downloadsDir, existing.fileName).exists()) {
+                    removeDownloadProgress(progressKey)
+                    logger.i(
+                        DOWNLOAD_TAG,
+                        "download skipped: already downloaded key=${current.key} " +
+                            "quality=${stream.qualityId}",
+                    )
+                    return@launch
+                }
+                if (existing != null) {
+                    // A record without its file: drop the stale
+                    // record and download again.
+                    removeDownloadRecord(existing)
+                }
+                target = File(downloadsDir, downloadFileName(current, stream.qualityId))
+                audioFileDownloader.download(stream.baseUrl, target) { bytes, total ->
+                    val fraction = if (total != null && total > 0) {
+                        (bytes.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                    } else {
+                        null
+                    }
+                    publishDownloadProgress(progressKey, DownloadProgress(fraction))
+                }
+                val record = DownloadRecord(
+                    track = current.copy(playUrl = ""),
+                    qualityId = stream.qualityId,
+                    fileName = target.name,
+                    sizeBytes = target.length(),
+                    downloadedAtMs = System.currentTimeMillis(),
+                )
+                downloaded = true
+                val updated = _downloadRecords.value.filterNot {
+                    it.track.key == record.track.key && it.qualityId == record.qualityId
+                } + record
+                _downloadRecords.value = updated
+                persistDownloadRecords(updated)
+                removeDownloadProgress(progressKey)
+                logger.i(
+                    DOWNLOAD_TAG,
+                    "download done key=${record.track.key} quality=${record.qualityId} " +
+                        "bytes=${record.sizeBytes}",
+                )
+            } catch (e: CancellationException) {
+                // A cancelled download (deleted mid-flight) leaves
+                // no progress entry behind: the spinner must not
+                // linger on the player button.
+                clearDownloadProgressFor(jobKey)
+                throw e
+            } catch (e: Exception) {
+                logger.e(DOWNLOAD_TAG, "download failed key=${track.key} ${describeError(e)}")
+                publishDownloadProgress(
+                    progressKey,
+                    DownloadProgress(fraction = null, failed = true),
+                )
+            } finally {
+                if (!downloaded) {
+                    runCatching { target?.delete() }
+                }
+                downloadJobs.remove(jobKey)
+            }
+        }
+    }
+
+    /**
+     * Deletes one download: cancels a download in flight for the
+     * same track, removes the file and the record, and persists.
+     * A missing file or record is a no-op.
+     */
+    fun deleteDownload(record: DownloadRecord) {
+        downloadJobs[record.track.key]?.cancel()
+        clearDownloadProgressFor(record.track.key)
+        removeDownloadFile(record)
+        removeDownloadRecord(record)
+        logger.i(
+            DOWNLOAD_TAG,
+            "download deleted key=${record.track.key} quality=${record.qualityId} " +
+                "file=${record.fileName}",
+        )
+    }
+
+    /**
+     * The downloaded file to play for [track]: the record matching
+     * the current quality preference's target stream id when the
+     * preference names one, else the highest downloaded quality.
+     * Records whose file is gone are dropped (and persisted away)
+     * instead of ever being handed to the engine.
+     */
+    private fun findLocalFile(track: Track): DownloadRecord? {
+        val records = _downloadRecords.value.filter { it.track.key == track.key }
+        if (records.isEmpty()) return null
+        val present = records.filter { File(downloadsDir, it.fileName).exists() }
+        val stale = records.filter { it !in present }
+        if (stale.isNotEmpty()) {
+            val updated = _downloadRecords.value - stale.toSet()
+            _downloadRecords.value = updated
+            persistDownloadRecords(updated)
+            logger.i(
+                DOWNLOAD_TAG,
+                "stale download records dropped count=${stale.size} key=${track.key}",
+            )
+        }
+        if (present.isEmpty()) return null
+        val preference = _qualityPreference.value
+        if (preference != AudioQuality.BEST) {
+            present.firstOrNull { it.qualityId == preference.tryOrder.first() }
+                ?.let { return it }
+        }
+        return present.maxByOrNull { it.qualityId }
+    }
+
+    /**
+     * Deletes files in the downloads dir that no record names:
+     * partial files left by a download killed mid-flight. Runs
+     * once at startup, after the records load. A missing or
+     * unreadable dir is a no-op.
+     */
+    private fun cleanupOrphanDownloads(records: List<DownloadRecord>) {
+        val kept = records.mapTo(mutableSetOf()) { it.fileName }
+        val files = runCatching { downloadsDir.listFiles() }.getOrNull() ?: return
+        for (file in files) {
+            if (file.isFile && file.name !in kept) {
+                if (runCatching { file.delete() }.getOrDefault(false)) {
+                    logger.i(DOWNLOAD_TAG, "orphan download deleted file=${file.name}")
+                }
+            }
+        }
+    }
+
+    /** Deletes the file for [record], ignoring failures: the record removal is what matters. */
+    private fun removeDownloadFile(record: DownloadRecord) {
+        runCatching { File(downloadsDir, record.fileName).delete() }
+    }
+
+    /** Drops [record] from the flow and persists, a no-op when it is not there. */
+    private fun removeDownloadRecord(record: DownloadRecord) {
+        val updated = _downloadRecords.value.filterNot {
+            it.track.key == record.track.key && it.qualityId == record.qualityId
+        }
+        if (updated.size == _downloadRecords.value.size) return
+        _downloadRecords.value = updated
+        persistDownloadRecords(updated)
+    }
+
+    /** Persists [records] in the background; a failure is logged and swallowed. */
+    private fun persistDownloadRecords(records: List<DownloadRecord>) {
+        viewModelScope.launch {
+            runCatching { downloadStore.save(records) }
+                .onFailure {
+                    logger.w(DOWNLOAD_TAG, "download save failed (${it::class.simpleName})")
+                }
+        }
+    }
+
+    private fun publishDownloadProgress(key: String, progress: DownloadProgress) {
+        _downloadProgress.value = _downloadProgress.value + (key to progress)
+    }
+
+    private fun removeDownloadProgress(key: String) {
+        if (key !in _downloadProgress.value) return
+        _downloadProgress.value = _downloadProgress.value - key
+    }
+
+    /**
+     * Drops every progress entry for [trackKey], in both key
+     * shapes: the bare track key while resolving, and the track
+     * key plus quality id once the stream resolved.
+     */
+    private fun clearDownloadProgressFor(trackKey: String) {
+        val remaining = _downloadProgress.value.filterKeys { key ->
+            key != trackKey && !key.startsWith("$trackKey:")
+        }
+        if (remaining.size != _downloadProgress.value.size) {
+            _downloadProgress.value = remaining
+        }
+    }
+
     /** Drops every buffered log line. */
     fun clearLogs() {
         logger.buffer.clear()
@@ -1174,9 +1503,11 @@ class SearchViewModel(
     }
 
     /**
-     * The one fresh-URL retry after an HTTP playback failure, for the
-     * same [intent]. A failure here, or a second player error, stops
-     * in the error state.
+     * The one fresh-URL retry after an HTTP playback failure (or
+     * after a local file failed, whose record was already
+     * dropped), for the same [intent]. Always the network path:
+     * the local file is gone by the time this runs. A failure
+     * here, or a second player error, stops in the error state.
      */
     private fun refetchAndPlay(intent: Int) {
         val track = _currentTrack.value ?: return
@@ -1187,8 +1518,10 @@ class SearchViewModel(
                 val stream = repository.fetchPlayUrl(track, _qualityPreference.value)
                 if (intent != playIntent) return@launch
                 _resolvedQualityLabel.value = AudioQuality.labelForStreamId(stream.qualityId)
+                _resolvedQualityId.value = stream.qualityId
                 engineIntent = intent
                 engineHasMedia = true
+                playingLocalRecord = null
                 playerEngine.play(
                     stream.baseUrl,
                     cacheKey(track, stream.qualityId),
@@ -1287,6 +1620,7 @@ class SearchViewModel(
     companion object {
         const val TAG = "Player"
         const val SEARCH_TAG = "Search"
+        const val DOWNLOAD_TAG = "Download"
 
         /** Progress polling cadence while playing. */
         const val PROGRESS_POLL_INTERVAL_MS: Long = 500L
@@ -1304,6 +1638,9 @@ class SearchViewModel(
 
 /** Audio cache key: bvid + cid + quality id, never the (expiring) URL. */
 fun cacheKey(track: Track, qualityId: Int): String = "${track.id}:${track.cid}:$qualityId"
+
+/** Download progress map key for one (track, quality) pair: the track key plus the stream id. */
+private fun downloadProgressKey(trackKey: String, qualityId: Int): String = "$trackKey:$qualityId"
 
 /** Drops later entries that are the same song as an earlier one, keeping the first of each. */
 private fun List<Track>.deduplicatedBySong(): List<Track> {
@@ -1338,7 +1675,7 @@ fun mapSearchError(error: Throwable, query: String): SearchUiState.Error {
 /** Maps a playback failure (detail or play URL resolution) onto the message the player error state shows. */
 fun mapPlayerError(error: Throwable): String = describeFailure(error).first
 
-/** Factory carrying the repository, the player engine, the app cache, and the quality, playlist, playback mode, and playback state stores into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, and the quality, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
@@ -1347,6 +1684,9 @@ class SearchViewModelFactory(
     private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     private val appCache: AppCache = InMemoryAppCache(),
     private val playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
+    private val downloadStore: DownloadStore = InMemoryDownloadStore(),
+    private val audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
+    private val downloadsDir: File = defaultDownloadsDir(),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1362,6 +1702,9 @@ class SearchViewModelFactory(
             playbackModeStore,
             appCache,
             playbackStateStore,
+            downloadStore,
+            audioFileDownloader,
+            downloadsDir,
         ) as T
     }
 }
