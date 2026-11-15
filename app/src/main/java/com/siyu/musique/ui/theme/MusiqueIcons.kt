@@ -114,7 +114,7 @@ object MusiqueIcons {
             viewportHeight = 24f,
         ).apply {
             addPath(
-                pathData = PathParser().parsePathString(pathData),
+                pathData = PathParser().parsePathString(pathData).toNodes(),
                 pathFillType = PathFillType.NonZero,
                 fill = SolidColor(Color.Black),
             )
