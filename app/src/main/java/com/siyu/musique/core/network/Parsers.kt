@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 
 /**
@@ -169,6 +170,54 @@ data class WebTicket(
     val navImgUrl: String?,
     val navSubUrl: String?,
 )
+
+/** One DASH audio stream from /x/player/playurl. [baseUrl] is the stream URL; it expires, so it is never stored long term and never logged in full. */
+data class AudioStream(val qualityId: Int, val baseUrl: String, val bandwidth: Long)
+
+/**
+ * Audio quality ids in preference order: 192K, 132K, 64K. Dolby
+ * (30250) and Hi-Res (30251) need a premium membership and are never
+ * picked, even as a fallback.
+ */
+val AUDIO_QUALITY_PREFERENCE: List<Int> = listOf(30280, 30232, 30216)
+
+/** The first stream matching the preference order, or null when none matches. Server order is not trusted: selection is by id, never by array index. */
+fun pickAudioStream(streams: List<AudioStream>): AudioStream? {
+    for (qualityId in AUDIO_QUALITY_PREFERENCE) {
+        streams.firstOrNull { it.qualityId == qualityId }?.let { return it }
+    }
+    return null
+}
+
+/**
+ * Play URL from /x/player/playurl (fnval 4048): data.dash.audio holds
+ * the DASH audio streams; durl, dash.flac, and dash.dolby are ignored.
+ * Streams without an id or an empty baseUrl are skipped. Throws
+ * [BiliParseException] when dash/audio is missing or empty, or when
+ * no stream matches the preference order (e.g. only Dolby/Hi-Res).
+ */
+fun parsePlayUrl(data: JsonElement): AudioStream {
+    val root = data as? JsonObject ?: throw parseError("Playurl data is not an object", data)
+    val dash = root.objectOrNull("dash")
+        ?: throw parseError("Playurl data has no dash", data)
+    val audio = dash.arrayOrNull("audio")
+        ?: throw parseError("Playurl dash has no audio array", data)
+    if (audio.isEmpty()) throw parseError("Playurl audio array is empty", data)
+    val streams = audio.mapNotNull { element ->
+        val stream = element as? JsonObject ?: return@mapNotNull null
+        val id = (stream["id"] as? JsonPrimitive)?.intOrNull
+            ?: (stream["id"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+            ?: return@mapNotNull null
+        val baseUrl = stream.stringOrNull("baseUrl")?.takeIf { it.isNotEmpty() }
+            ?: return@mapNotNull null
+        AudioStream(id, baseUrl, stream.longOrNull("bandwidth") ?: 0L)
+    }
+    return pickAudioStream(streams)
+        ?: throw parseError(
+            "Playurl has no playable audio stream (need 30280, 30232, or 30216)",
+            data,
+        )
+}
 
 /** GenWebTicket: data.ticket, data.ttl, data.created_at, data.nav {img, sub}. */
 fun parseWebTicket(data: JsonElement): WebTicket {
