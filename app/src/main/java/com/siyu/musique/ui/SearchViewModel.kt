@@ -341,13 +341,22 @@ class SearchViewModel(
             }
             val stored = result.getOrNull()
             val lists = ensureDefaultPlaylist(stored)
-            _playlists.value = lists
+            // Drop songs stored twice (added before the dedupe fix
+            // learned that an empty cid matches any part): keep the
+            // first entry of each song.
+            val deduped = lists.map { playlist ->
+                playlist.copy(tracks = playlist.tracks.deduplicatedBySong())
+            }
+            _playlists.value = deduped
             // A successful load that came back empty (or without the
             // default) means first launch or a corrupt value: persist
-            // the bootstrapped list. A failed load never persists,
-            // so a transient read failure cannot wipe stored lists.
-            if (result.isSuccess && (stored.isNullOrEmpty() || stored.none { it.isDefault })) {
-                persistPlaylists(lists)
+            // the bootstrapped list. A load that held duplicates
+            // persists the cleaned list once. A failed load never
+            // persists, so a transient read failure cannot wipe
+            // stored lists.
+            val needsBootstrap = stored.isNullOrEmpty() || stored.none { it.isDefault }
+            if (result.isSuccess && (needsBootstrap || deduped != lists)) {
+                persistPlaylists(deduped)
             }
         }
         playerEngine.setListener(object : PlayerEngine.Listener {
@@ -683,8 +692,7 @@ class SearchViewModel(
     private fun isCurrentTrack(track: Track): Boolean {
         val current = _currentTrack.value ?: return false
         if (_playerState.value is PlayerUiState.Error) return false
-        if (current.id != track.id) return false
-        return current.cid.isEmpty() || track.cid.isEmpty() || current.cid == track.cid
+        return current.isSameSongAs(track)
     }
 
     /**
@@ -1059,7 +1067,7 @@ class SearchViewModel(
     fun addTrackToPlaylist(playlistId: String, track: Track): Boolean {
         val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return false
         val stored = track.copy(playUrl = "")
-        if (target.tracks.any { it.key == stored.key }) {
+        if (target.tracks.any { it.isSameSongAs(stored) }) {
             logger.i(
                 TAG,
                 "playlist add skipped: already present bvid=${track.id} cid=${track.cid} " +
@@ -1289,6 +1297,15 @@ class SearchViewModel(
 
 /** Audio cache key: bvid + cid + quality id, never the (expiring) URL. */
 fun cacheKey(track: Track, qualityId: Int): String = "${track.id}:${track.cid}:$qualityId"
+
+/** Drops later entries that are the same song as an earlier one, keeping the first of each. */
+private fun List<Track>.deduplicatedBySong(): List<Track> {
+    val kept = mutableListOf<Track>()
+    for (track in this) {
+        if (kept.none { it.isSameSongAs(track) }) kept.add(track)
+    }
+    return kept
+}
 
 /** The failure message and kind for an exception, shared by search and player errors. */
 private fun describeFailure(error: Throwable): Pair<String, SearchErrorKind> = when (error) {

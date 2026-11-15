@@ -30,4 +30,16 @@ data class Track(
      */
     val key: String
         get() = "$id:$cid"
+
+    /**
+     * Whether [other] is the same song, not just the same part:
+     * same video, and the parts match when both are known. A track
+     * whose cid is still empty (straight from search results)
+     * stands for the whole video, so it matches any part of the
+     * same video. This is the dedupe rule for playlists and the
+     * already-current check for taps: the same video added before
+     * and after its cid was filled in must count as one song.
+     */
+    fun isSameSongAs(other: Track): Boolean =
+        id == other.id && (cid.isEmpty() || other.cid.isEmpty() || cid == other.cid)
 }

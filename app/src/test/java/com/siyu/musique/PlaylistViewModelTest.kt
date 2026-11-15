@@ -296,6 +296,68 @@ class PlaylistViewModelTest {
     }
 
     @Test
+    fun `addTrackToPlaylist rejects the same video once its cid is filled in`() =
+        runTest(testDispatcher) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            assertTrue(
+                vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00001", cid = "")),
+            )
+            assertFalse(
+                vm.addTrackToPlaylist(
+                    Playlist.DEFAULT_ID,
+                    track("BV1DUP00001", cid = "28139389900"),
+                ),
+            )
+            assertEquals(1, vm.playlists.value.single().tracks.size)
+        }
+
+    @Test
+    fun `addTrackToPlaylist rejects an empty-cid add after a filled-cid add`() =
+        runTest(testDispatcher) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            assertTrue(
+                vm.addTrackToPlaylist(
+                    Playlist.DEFAULT_ID,
+                    track("BV1DUP00002", cid = "28139389900"),
+                ),
+            )
+            assertFalse(
+                vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00002", cid = "")),
+            )
+            assertEquals(1, vm.playlists.value.single().tracks.size)
+        }
+
+    @Test
+    fun `addTrackToPlaylist keeps different parts of the same video`() =
+        runTest(testDispatcher) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            assertTrue(
+                vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00003", cid = "1")),
+            )
+            assertTrue(
+                vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00003", cid = "2")),
+            )
+            assertEquals(2, vm.playlists.value.single().tracks.size)
+        }
+
+    @Test
+    fun `loading dedupes songs already stored twice and persists the cleaned list`() =
+        runTest(testDispatcher) {
+            val first = track("BV1DUP00004", cid = "")
+            val second = track("BV1DUP00004", cid = "28139389900")
+            val kept = track("BV1DUP00005", cid = "1")
+            val stored = Playlist(Playlist.DEFAULT_ID, Playlist.DEFAULT_NAME, listOf(first, kept, second))
+            val store = InMemoryPlaylistStore(listOf(stored))
+            val vm = viewModel(store = store)
+            advanceUntilIdle()
+            assertEquals(listOf(first, kept), vm.playlists.value.single().tracks)
+            assertEquals(vm.playlists.value, store.load())
+        }
+
+    @Test
     fun `addTrackToPlaylist reports false for an unknown playlist`() = runTest(testDispatcher) {
         val vm = viewModel()
         advanceUntilIdle()
