@@ -14,9 +14,11 @@ import androidx.navigation.navArgument
 import com.siyu.musique.data.AppCache
 import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryPlaybackModeStore
+import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.PlaybackModeStore
+import com.siyu.musique.data.PlaybackStateStore
 import com.siyu.musique.data.PlaylistStore
 import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
@@ -42,6 +44,7 @@ fun MusiqueApp(
     qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
     playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
+    playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
@@ -53,6 +56,7 @@ fun MusiqueApp(
             playlistStore,
             playbackModeStore,
             appCache,
+            playbackStateStore,
         ),
     )
 

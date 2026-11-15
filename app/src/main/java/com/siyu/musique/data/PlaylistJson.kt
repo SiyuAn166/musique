@@ -4,6 +4,9 @@ import com.siyu.musique.model.Playlist
 import com.siyu.musique.model.Track
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -39,28 +42,54 @@ object PlaylistJson {
                     buildJsonObject {
                         put("id", playlist.id)
                         put("name", playlist.name)
-                        put("tracks", buildJsonArray {
-                            for (track in playlist.tracks) {
-                                add(
-                                    buildJsonObject {
-                                        put("bvid", track.id)
-                                        put("cid", track.cid)
-                                        put("title", track.title)
-                                        put("artist", track.artist)
-                                        put("cover", track.cover)
-                                        put(
-                                            "durationMs",
-                                            track.duration.inWholeMilliseconds,
-                                        )
-                                    },
-                                )
-                            }
-                        })
+                        put("tracks", tracksToJsonArray(playlist.tracks))
                     },
                 )
             }
         }
         return array.toString()
+    }
+
+    /** Encodes [tracks] as a JSON array. Shared with the saved-playback codec, so both stores write the same track shape. */
+    fun tracksToJsonArray(tracks: List<Track>): JsonArray = buildJsonArray {
+        for (track in tracks) {
+            add(trackToJsonObject(track))
+        }
+    }
+
+    private fun trackToJsonObject(track: Track): JsonObject = buildJsonObject {
+        put("bvid", track.id)
+        put("cid", track.cid)
+        put("title", track.title)
+        put("artist", track.artist)
+        put("cover", track.cover)
+        put("durationMs", track.duration.inWholeMilliseconds)
+    }
+
+    /** Decodes JSON track entries, leniently: entries missing a bvid are skipped, missing fields default to empty/zero. */
+    fun tracksFromJsonArray(elements: List<JsonElement>): List<Track> {
+        val tracks = mutableListOf<Track>()
+        for (trackElement in elements) {
+            val trackObj = try {
+                trackElement.jsonObject
+            } catch (e: Exception) {
+                continue
+            }
+            val bvid = trackObj["bvid"]?.jsonPrimitive?.contentOrNull ?: continue
+            tracks.add(
+                Track(
+                    id = bvid,
+                    cid = trackObj["cid"]?.jsonPrimitive?.contentOrNull ?: "",
+                    title = trackObj["title"]?.jsonPrimitive?.contentOrNull ?: "",
+                    artist = trackObj["artist"]?.jsonPrimitive?.contentOrNull ?: "",
+                    cover = trackObj["cover"]?.jsonPrimitive?.contentOrNull ?: "",
+                    duration = (
+                        trackObj["durationMs"]?.jsonPrimitive?.longOrNull ?: 0L
+                        ).coerceAtLeast(0L).milliseconds,
+                ),
+            )
+        }
+        return tracks
     }
 
     /**
@@ -98,27 +127,7 @@ object PlaylistJson {
                     emptyList()
                 }
             }
-            val tracks = mutableListOf<Track>()
-            for (trackElement in tracksArray) {
-                val trackObj = try {
-                    trackElement.jsonObject
-                } catch (e: Exception) {
-                    continue
-                }
-                val bvid = trackObj["bvid"]?.jsonPrimitive?.contentOrNull ?: continue
-                tracks.add(
-                    Track(
-                        id = bvid,
-                        cid = trackObj["cid"]?.jsonPrimitive?.contentOrNull ?: "",
-                        title = trackObj["title"]?.jsonPrimitive?.contentOrNull ?: "",
-                        artist = trackObj["artist"]?.jsonPrimitive?.contentOrNull ?: "",
-                        cover = trackObj["cover"]?.jsonPrimitive?.contentOrNull ?: "",
-                        duration = (
-                            trackObj["durationMs"]?.jsonPrimitive?.longOrNull ?: 0L
-                            ).coerceAtLeast(0L).milliseconds,
-                    ),
-                )
-            }
+            val tracks = tracksFromJsonArray(tracksArray)
             playlists.add(Playlist(id = id, name = name, tracks = tracks))
         }
         return playlists
