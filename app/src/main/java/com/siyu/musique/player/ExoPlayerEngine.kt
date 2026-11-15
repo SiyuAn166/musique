@@ -61,6 +61,26 @@ class ExoPlayerEngine(
             }
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            // Flipping playWhenReady while the player is already
+            // READY (pause and resume mid-track) fires no
+            // playback-state change, so onPlaybackStateChanged
+            // above never runs for it. Without this override a
+            // resume left the UI stuck on Buffering with the
+            // progress polling never restarted: the ViewModel
+            // only learns the player is playing again from
+            // onPlaying. Only report while READY; during a
+            // fresh play, a stop, or the ENDED state the
+            // playback-state callback owns the transition.
+            if (player.playbackState == Player.STATE_READY) {
+                if (playWhenReady) {
+                    listener?.onPlaying()
+                } else {
+                    listener?.onPaused()
+                }
+            }
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             listener?.onError(
                 PlaybackError(

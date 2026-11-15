@@ -1,5 +1,7 @@
 package com.siyu.musique.ui
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -130,6 +132,12 @@ fun MusiqueApp(
                     NavHost(
                         navController = navController,
                         startDestination = "home",
+                        // No transition animations: page switches
+                        // cut instantly instead of fading.
+                        enterTransition = { EnterTransition.None },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
                     ) {
                         composable("home") {
                             HomeScreen(
