@@ -39,8 +39,18 @@ class BiliClient(
     private val mutex = Mutex()
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** A Bilibili response envelope: business code, message, and data. */
-    data class Envelope(val code: Int, val message: String, val data: JsonElement)
+    /**
+     * A Bilibili response envelope: business code, message, and data.
+     * [raw] is the whole response object, for endpoints whose payload
+     * lives outside `data` (the search suggest endpoint answers
+     * under `result` instead).
+     */
+    data class Envelope(
+        val code: Int,
+        val message: String,
+        val data: JsonElement,
+        val raw: JsonObject,
+    )
 
     /** GET [url] and return the envelope's data, enforcing code == 0. */
     suspend fun getData(
@@ -181,7 +191,7 @@ class BiliClient(
             if (signed && (code == -352 || code == -412)) throw RiskRetry()
             throw BiliApiException(code, message.ifEmpty { "Bilibili error $code" })
         }
-        return Envelope(code, message, data)
+        return Envelope(code, message, data, obj)
     }
 
     private suspend fun executeOnce(

@@ -13,6 +13,7 @@ import com.siyu.musique.core.network.BiliParseException
 import com.siyu.musique.core.network.av2bv
 import com.siyu.musique.model.Track
 import kotlin.time.Duration
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -171,6 +172,19 @@ class BiliSearchRepository(
         } catch (e: Exception) {
             logger.e(TAG, "detail failed for ${track.id}: ${describeError(e)}")
             throw e
+        }
+    }
+
+    override suspend fun fetchSuggestions(query: String): List<String> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        return try {
+            apiService.fetchSuggestions(trimmed)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e(TAG, "suggest failed: ${describeError(e)}")
+            emptyList()
         }
     }
 

@@ -26,6 +26,10 @@ const val PAGELIST_DATA = """[{"cid":28139389900,"page":1,"part":"001. 夜曲-�
 const val VIEW_DATA_MULTI = """{"bvid":"BV1q4FTeBEMj","aid":113911642789603,"pic":"http://i2.hdslb.com/bfs/archive/25c409c43790cc13bf9ebc473b36c4f650527653.jpg","title":"周杰伦歌曲精选100首","duration":25142,"cid":28139389900,"owner":{"mid":1346923466,"name":"无损音乐合集"},"pages":[{"cid":28139389900,"page":1,"part":"001. 夜曲-周杰伦","duration":228},{"cid":28139389901,"page":2,"part":"002. 青花瓷-周杰伦","duration":241},{"cid":28139389902,"page":3,"part":"003. 稻香-周杰伦","duration":217}]}"""
 const val PAGELIST_DATA_MULTI = """[{"cid":28139389900,"page":1,"part":"001. 夜曲-周杰伦","duration":228},{"cid":28139389901,"page":2,"part":"002. 青花瓷-周杰伦","duration":241},{"cid":28139389902,"page":3,"part":"003. 稻香-周杰伦","duration":217}]"""
 const val NAV_DATA = """{"isLogin":false,"wbi_img":{"img_url":"https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png","sub_url":"https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png"}}"""
+// Suggest body trimmed from the live Nov 15, 2026 probe response:
+// the payload sits under `result`, not `data`, and `name` carries
+// <em> highlight markup while `value` is plain text.
+const val SUGGEST_BODY = """{"exp_str":"","code":0,"result":{"tag":[{"value":"周杰伦歌曲全集","term":"周杰伦歌曲全集","ref":0,"name":"<em class=\"suggest_high_light\">周杰伦</em>歌曲全集","spid":5,"type":"","item_feature":""},{"value":"周杰伦","term":"周杰伦","ref":0,"name":"<em class=\"suggest_high_light\">周杰伦</em>","spid":5,"type":"","item_feature":""},{"value":"周杰伦mv","term":"周杰伦mv","ref":0,"name":"<em class=\"suggest_high_light\">周杰伦</em>mv","spid":5,"type":"","item_feature":""}]}}"""
 }
 
 private fun service(
@@ -222,5 +226,29 @@ gateway.enqueue(envelopeResponse(-101, NAV_DATA, message = "not logged in"))
 val keys = service(gateway).fetchNavKeys()
 assertEquals(WbiSignerTest.IMG_KEY, keys.imgKey)
 assertEquals(WbiSignerTest.SUB_KEY, keys.subKey)
+}
+
+@Test
+fun `suggest returns plain values from the result tags, unsigned`() = runTest {
+val gateway = FakeGateway()
+gateway.enqueue(plainResponse(200, SUGGEST_BODY))
+val suggestions = service(gateway).fetchSuggestions("周杰伦")
+assertEquals(listOf("周杰伦歌曲全集", "周杰伦", "周杰伦mv"), suggestions)
+val url = gateway.requests.single().url
+assertTrue(url.startsWith("https://s.search.bilibili.com/main/suggest?term="))
+assertTrue(!url.contains("周杰伦"))
+assertTrue(!url.contains("w_rid"))
+}
+
+@Test
+fun `suggest throws on a non-zero code`() = runTest {
+val gateway = FakeGateway()
+gateway.enqueue(plainResponse(200, """{"code":3,"result":{"tag":[]}}"""))
+try {
+service(gateway).fetchSuggestions("周杰伦")
+fail("expected an exception")
+} catch (e: BiliApiException) {
+assertEquals(3, e.code)
+}
 }
 }

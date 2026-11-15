@@ -287,6 +287,36 @@ fun parsePlayUrl(data: JsonElement, preference: AudioQuality = AudioQuality.BEST
         )
 }
 
+/** How many search suggestions the dropdown shows at most. */
+const val SUGGESTION_LIMIT: Int = 10
+
+/**
+ * Search suggestions: the suggest endpoint answers under `result`
+ * on the envelope object itself (no `data` field), so this parser
+ * takes the whole envelope object, unlike the others. result.tag
+ * is an array of {value, term, name, ...}; `value` is the plain
+ * suggestion text (`name` carries <em> highlight markup, never
+ * used). Lenient by design: suggestions are best-effort, so any
+ * missing or misshaped node yields an empty list instead of
+ * throwing, blank values are skipped, and `term` fills in when
+ * `value` is missing. Field names verified live Nov 15, 2026.
+ */
+fun parseSuggest(envelope: JsonElement): List<String> {
+    val root = envelope as? JsonObject ?: return emptyList()
+    val tags = root.objectOrNull("result")?.arrayOrNull("tag") ?: return emptyList()
+    val suggestions = mutableListOf<String>()
+    val seen = mutableSetOf<String>()
+    for (tag in tags) {
+        val item = tag as? JsonObject ?: continue
+        val text = item.stringOrNull("value")?.ifBlank { null }
+            ?: item.stringOrNull("term")?.ifBlank { null }
+            ?: continue
+        if (seen.add(text)) suggestions.add(text)
+        if (suggestions.size >= SUGGESTION_LIMIT) break
+    }
+    return suggestions
+}
+
 /** GenWebTicket: data.ticket, data.ttl, data.created_at, data.nav {img, sub}. */
 fun parseWebTicket(data: JsonElement): WebTicket {
     val root = data as? JsonObject ?: throw parseError("GenWebTicket data is not an object", data)

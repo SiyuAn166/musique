@@ -97,7 +97,7 @@ fun PlaylistsScreen(
                 },
             ) {
                 Icon(
-                    imageVector = MusiqueIcons.AddCircleOutline,
+                    imageVector = MusiqueIcons.Add,
                     contentDescription = "Create playlist",
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(28.dp),

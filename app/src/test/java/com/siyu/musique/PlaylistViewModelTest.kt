@@ -285,6 +285,39 @@ class PlaylistViewModelTest {
         }
 
     @Test
+    fun `removeTracksFromPlaylist removes several at once and persists`() =
+        runTest(testDispatcher) {
+            val store = InMemoryPlaylistStore()
+            val vm = viewModel(store = store)
+            advanceUntilIdle()
+            val first = track("BV1BAT00001")
+            val second = track("BV1BAT00002")
+            val third = track("BV1BAT00003")
+            vm.addTrackToPlaylist(Playlist.DEFAULT_ID, first)
+            vm.addTrackToPlaylist(Playlist.DEFAULT_ID, second)
+            vm.addTrackToPlaylist(Playlist.DEFAULT_ID, third)
+            vm.removeTracksFromPlaylist(
+                Playlist.DEFAULT_ID,
+                setOf(first.key, third.key, "BV1NOPE:1"),
+            )
+            advanceUntilIdle()
+            assertEquals(listOf(second), vm.playlists.value.single().tracks)
+            assertEquals(vm.playlists.value, store.load())
+        }
+
+    @Test
+    fun `removeTracksFromPlaylist with an empty set changes nothing`() =
+        runTest(testDispatcher) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            val kept = track("BV1BAT00004")
+            vm.addTrackToPlaylist(Playlist.DEFAULT_ID, kept)
+            vm.removeTracksFromPlaylist(Playlist.DEFAULT_ID, emptySet())
+            advanceUntilIdle()
+            assertEquals(listOf(kept), vm.playlists.value.single().tracks)
+        }
+
+    @Test
     fun `playing from a playlist advances within the playlist`() = runTest(testDispatcher) {
         val engine = FakePlayerEngine()
         val vm = viewModel(engine = engine)

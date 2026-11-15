@@ -87,4 +87,13 @@ interface SearchRepository {
     ): AudioStream {
         throw BiliParseException("Play URL resolution is not implemented by this repository")
     }
+
+    /**
+     * Search suggestions for [query], in the server's order.
+     * Best-effort by contract: a blank query sends no request, and
+     * any failure yields an empty list instead of throwing, so the
+     * suggestion dropdown can never disturb searching. The default
+     * returns an empty list, so search-only fakes keep compiling.
+     */
+    suspend fun fetchSuggestions(query: String): List<String> = emptyList()
 }

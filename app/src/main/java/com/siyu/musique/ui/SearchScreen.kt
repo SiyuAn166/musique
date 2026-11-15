@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -18,10 +19,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -63,7 +68,9 @@ private const val LOAD_MORE_THRESHOLD = 3
  * rounded
  * search field, and flat result rows with hairline dividers. Search
  * triggers on the keyboard search action and on tapping the
- * magnifier icon. Tapping a row plays it (cid fill + fresh play URL
+ * magnifier icon. Typing shows a suggestion dropdown from
+ * Bilibili's suggest API under the field; tapping a suggestion
+ * searches it. Tapping a row plays it (cid fill + fresh play URL
  * first); the plus icon on a row opens the playlist chooser.
  * Search errors show a distinct message per failure kind with a
  * retry icon button; player errors show their own message with a
@@ -80,6 +87,7 @@ fun SearchScreen(
     modifier: Modifier = Modifier,
 ) {
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
+    val suggestions by viewModel.suggestions.collectAsStateWithLifecycle()
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
@@ -141,7 +149,10 @@ fun SearchScreen(
         Spacer(modifier = Modifier.height(8.dp))
         TextField(
             value = query,
-            onValueChange = { query = it },
+            onValueChange = {
+                query = it
+                viewModel.onQueryChanged(it)
+            },
             placeholder = { Text("Search songs") },
             leadingIcon = {
                 IconButton(onClick = { viewModel.search(query) }) {
@@ -154,7 +165,12 @@ fun SearchScreen(
             },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { query = "" }) {
+                    IconButton(
+                        onClick = {
+                            query = ""
+                            viewModel.onQueryChanged("")
+                        },
+                    ) {
                         Icon(
                             imageVector = MusiqueIcons.Clear,
                             contentDescription = "Clear search",
@@ -186,6 +202,56 @@ fun SearchScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Suggestion dropdown: a floating card under the field.
+        // Tapping a suggestion fills the field and searches it;
+        // the dropdown hides on search, on clear, and on blank.
+        if (suggestions.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    suggestions.forEach { suggestion ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    query = suggestion
+                                    viewModel.search(suggestion)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = MusiqueIcons.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = suggestion,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         when (val state = searchState) {
             SearchUiState.Idle -> {
                 LazyColumn(modifier = Modifier.weight(1f)) {
@@ -210,7 +276,7 @@ fun SearchScreen(
                                 },
                             ) {
                                 Icon(
-                                    imageVector = MusiqueIcons.AddCircleOutline,
+                                    imageVector = MusiqueIcons.Add,
                                     contentDescription = "Create playlist",
                                     tint = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(24.dp),

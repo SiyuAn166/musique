@@ -31,6 +31,21 @@ class FakeSearchRepository : SearchRepository {
         }
     }
 
+    /** Suggestion answers by query. */
+    var suggestionsFor: (String) -> List<String> = { emptyList() }
+
+    /** Milliseconds [fetchSuggestions] waits, so tests can overlap fetches. */
+    var suggestionsDelayMs: Long = 0L
+
+    /** Queries [fetchSuggestions] was called with, in order. */
+    val suggestionCalls: MutableList<String> = mutableListOf()
+
+    override suspend fun fetchSuggestions(query: String): List<String> {
+        suggestionCalls.add(query)
+        delay(suggestionsDelayMs)
+        return suggestionsFor(query)
+    }
+
     override suspend fun fetchDetail(track: Track): DetailedTrack =
         DetailedTrack(track, listOf(track))
 

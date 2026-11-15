@@ -43,10 +43,15 @@ class BiliSearchRepositoryTest {
             nowMillis = { 1794710392000L },
         )
 
+        /** The body the suggest endpoint answers with; tests override it to fail. */
+        var suggestBody: String = ApiServiceTest.SUGGEST_BODY
+
         init {
             keys.fetcher = { api.fetchNavKeys() }
             gateway.handler = { request ->
                 when {
+                    request.url.contains("main/suggest") ->
+                        plainResponse(200, suggestBody)
                     request.url.contains("finger/spi") ->
                         envelopeResponse(0, BiliBootstrapTest.FINGER_DATA)
                     request.url.contains("GenWebTicket") ->
@@ -121,6 +126,36 @@ class BiliSearchRepositoryTest {
         stack.gateway.requests.clear()
         repository.search("avXYZ")
         assertTrue(stack.gateway.requests.any { it.url.contains("search/all/v2") })
+    }
+
+    @Test
+    fun `suggestions return the parsed values`() = runTest {
+        val stack = Stack(FakeGateway())
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        assertEquals(
+            listOf("周杰伦歌曲全集", "周杰伦", "周杰伦mv"),
+            repository.fetchSuggestions("周杰伦"),
+        )
+    }
+
+    @Test
+    fun `blank suggestion query sends no request`() = runTest {
+        val stack = Stack(FakeGateway())
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        stack.gateway.requests.clear()
+        assertTrue(repository.fetchSuggestions("   ").isEmpty())
+        assertTrue(stack.gateway.requests.isEmpty())
+    }
+
+    @Test
+    fun `suggestion failure yields an empty list instead of throwing`() = runTest {
+        val stack = Stack(FakeGateway())
+        stack.suggestBody = """{"code":3,"result":{"tag":[]}}"""
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        assertTrue(repository.fetchSuggestions("周杰伦").isEmpty())
     }
 
     @Test

@@ -92,6 +92,22 @@ class ApiService(
     }
 
     /**
+     * Search suggestions for [term]: the s.search.bilibili.com
+     * suggest endpoint, unsigned (verified live Nov 15, 2026, no
+     * signing or cookies needed). Returns the plain suggestion
+     * texts in the server's order, at most [SUGGESTION_LIMIT].
+     * Throws like any other call on transport or business-code
+     * failure; the repository turns that into an empty list,
+     * because suggestions must never disturb searching.
+     */
+    suspend fun fetchSuggestions(term: String): List<String> {
+        val url = "$SUGGEST_URL?term=${WbiSigner.percentEncode(term)}"
+        val suggestions = parseSuggest(client.getEnvelope(url, signed = false).raw)
+        logger.i(TAG, "suggest term=\"$term\" count=${suggestions.size}")
+        return suggestions
+    }
+
+    /**
      * WBI keys from /x/web-interface/nav. Anonymous calls answer code
      * -101 while still carrying data.wbi_img, so -101 is allowed.
      */
@@ -107,5 +123,6 @@ class ApiService(
         const val PAGELIST_URL = "https://api.bilibili.com/x/player/pagelist"
         const val PLAYURL_URL = "https://api.bilibili.com/x/player/playurl"
         const val NAV_URL = "https://api.bilibili.com/x/web-interface/nav"
+        const val SUGGEST_URL = "https://s.search.bilibili.com/main/suggest"
     }
 }

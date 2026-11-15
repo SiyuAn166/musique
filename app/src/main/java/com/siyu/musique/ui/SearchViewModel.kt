@@ -166,6 +166,10 @@ class SearchViewModel(
     private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val searchState: StateFlow<SearchUiState> = _searchState.asStateFlow()
 
+    /** Search suggestions for the current field text, or empty when none apply. */
+    private val _suggestions = MutableStateFlow<List<String>>(emptyList())
+    val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
+
     private val _currentTrack = MutableStateFlow<Track?>(null)
     val currentTrack: StateFlow<Track?> = _currentTrack.asStateFlow()
 
@@ -255,6 +259,15 @@ class SearchViewModel(
     private var playJob: Job? = null
     private var loadMoreJob: Job? = null
     private var progressJob: Job? = null
+    private var suggestJob: Job? = null
+
+    /**
+     * The query the latest keystroke asked suggestions for. A
+     * suggestion fetch only publishes when its query still matches
+     * this, so a slow response can never overwrite a newer query's
+     * dropdown (or repopulate it after a search cleared it).
+     */
+    private var latestSuggestQuery: String = ""
 
     /** Incremented on every tap; stale async work checks against it. */
     private var playIntent: Int = 0
@@ -409,8 +422,47 @@ class SearchViewModel(
         })
     }
 
+    /**
+     * The search field's text changed: debounce, then fetch
+     * suggestions for it. A blank query clears the dropdown and
+     * sends no request. Every keystroke cancels the previous
+     * fetch, so only the latest text ever queries the server.
+     * Failures leave the dropdown empty: suggestions are
+     * best-effort and must never disturb searching.
+     */
+    fun onQueryChanged(query: String) {
+        val trimmed = query.trim()
+        latestSuggestQuery = trimmed
+        suggestJob?.cancel()
+        if (trimmed.isEmpty()) {
+            _suggestions.value = emptyList()
+            return
+        }
+        suggestJob = viewModelScope.launch {
+            delay(SUGGEST_DEBOUNCE_MS)
+            val fetched = try {
+                repository.fetchSuggestions(trimmed)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            if (trimmed == latestSuggestQuery) {
+                _suggestions.value = fetched
+            }
+        }
+    }
+
+    /** Hides the suggestion dropdown and drops any fetch in flight. */
+    fun clearSuggestions() {
+        latestSuggestQuery = ""
+        suggestJob?.cancel()
+        _suggestions.value = emptyList()
+    }
+
     fun search(query: String) {
         val trimmed = query.trim()
+        clearSuggestions()
         loadMoreJob?.cancel()
         if (trimmed.isEmpty()) {
             _searchState.value = SearchUiState.Idle
@@ -1022,17 +1074,30 @@ class SearchViewModel(
      * not in the playlist is a no-op.
      */
     fun removeTrackFromPlaylist(playlistId: String, trackKey: String) {
+        removeTracksFromPlaylist(playlistId, setOf(trackKey))
+    }
+
+    /**
+     * Removes every track whose key is in [trackKeys] from one
+     * playlist, in a single update and a single persist: the
+     * detail screen's checkbox selection deletes through here.
+     * An empty set, an unknown playlist, or keys that match
+     * nothing are all no-ops; other playlists are untouched.
+     */
+    fun removeTracksFromPlaylist(playlistId: String, trackKeys: Set<String>) {
+        if (trackKeys.isEmpty()) return
         val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
-        if (target.tracks.none { it.key == trackKey }) return
+        val removed = target.tracks.count { it.key in trackKeys }
+        if (removed == 0) return
         val updated = _playlists.value.map { playlist ->
             if (playlist.id == playlistId) {
-                playlist.copy(tracks = playlist.tracks.filterNot { it.key == trackKey })
+                playlist.copy(tracks = playlist.tracks.filterNot { it.key in trackKeys })
             } else {
                 playlist
             }
         }
         _playlists.value = updated
-        logger.i(TAG, "playlist remove key=$trackKey playlist=$playlistId")
+        logger.i(TAG, "playlist remove count=$removed playlist=$playlistId")
         persistPlaylists(updated)
     }
 
@@ -1204,6 +1269,9 @@ class SearchViewModel(
 
         /** Cap on the shuffle history, so endless skipping cannot grow it forever. */
         private const val SHUFFLE_HISTORY_LIMIT = 50
+
+        /** Keystroke quiet time before suggestions are fetched. */
+        const val SUGGEST_DEBOUNCE_MS: Long = 300L
     }
 }
 

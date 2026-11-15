@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -20,6 +22,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -30,8 +35,9 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 /**
  * Playlist detail screen: a back chevron, the playlist name as a
  * large title, the song count, and flat song rows like the search
- * rows, with a minus-circle icon button to remove the song from the
- * playlist. Tapping a song plays it with the playlist as the queue.
+ * rows, each with a checkbox to select it. Tapping a song plays it
+ * with the playlist as the queue. While any song is selected, a
+ * minus icon at the top removes all selected songs at once.
  * User-created playlists get a trash icon to delete the whole
  * playlist; the default playlist cannot be deleted. An empty
  * playlist shows a short empty message.
@@ -52,6 +58,9 @@ fun PlaylistDetailScreen(
 
     val playlist = playlists.firstOrNull { it.id == playlistId }
 
+    /** Keys of the songs checked for removal, or empty when nothing is selected. */
+    var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -71,6 +80,20 @@ fun PlaylistDetailScreen(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
+            if (playlist != null && selectedKeys.isNotEmpty()) {
+                IconButton(
+                    onClick = {
+                        viewModel.removeTracksFromPlaylist(playlist.id, selectedKeys)
+                        selectedKeys = emptySet()
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Remove,
+                        contentDescription = "Remove selected songs",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
             if (playlist != null && !playlist.isDefault) {
                 IconButton(
                     onClick = {
@@ -142,20 +165,22 @@ fun PlaylistDetailScreen(
                             isCurrent = track.id == currentTrack?.id,
                             onClick = { viewModel.playFromPlaylist(track, playlist) },
                             trailing = {
-                                IconButton(
-                                    onClick = {
-                                        viewModel.removeTrackFromPlaylist(
-                                            playlist.id,
-                                            track.key,
-                                        )
+                                Checkbox(
+                                    checked = track.key in selectedKeys,
+                                    onCheckedChange = { checked ->
+                                        selectedKeys = if (checked) {
+                                            selectedKeys + track.key
+                                        } else {
+                                            selectedKeys - track.key
+                                        }
                                     },
-                                ) {
-                                    Icon(
-                                        imageVector = MusiqueIcons.RemoveCircleOutline,
-                                        contentDescription = "Remove from playlist",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = MaterialTheme.colorScheme.onSurface,
+                                        uncheckedColor =
+                                            MaterialTheme.colorScheme.onSurfaceVariant,
+                                        checkmarkColor = MaterialTheme.colorScheme.surface,
+                                    ),
+                                )
                             },
                         )
                         if (index < playlist.tracks.lastIndex) {
