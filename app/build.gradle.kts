@@ -17,7 +17,7 @@ android {
         // its features are complete, never one version per commit. Step 0
         // gets no version tag; v0.1 is tagged only when search and play
         // are complete and tested.
-        versionName = "0.1.0-dev"
+        versionName = "0.1.0"
     }
 
     buildTypes {

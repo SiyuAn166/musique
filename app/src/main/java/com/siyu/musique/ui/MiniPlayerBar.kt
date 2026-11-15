@@ -32,6 +32,7 @@ import coil.compose.AsyncImage
 import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
 import com.siyu.musique.ui.theme.MusiqueIcons
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Slim floating mini player bar: a white card with a small square
@@ -41,8 +42,10 @@ import com.siyu.musique.ui.theme.MusiqueIcons
  * a small black badge before the title when [qualityLabel] is not
  * null. Tapping the bar (not the buttons) opens the player page;
  * the error state shows a retry icon button instead of the
- * controls. The second line names the player state while loading,
- * paused, or failed; otherwise it shows the artist and duration.
+ * controls. The second line names the player state while loading
+ * or failed; while playing or paused it shows the elapsed and
+ * total time. When no duration is known yet it falls back to the
+ * artist and duration.
  */
 @Composable
 fun MiniPlayerBar(
@@ -63,9 +66,15 @@ fun MiniPlayerBar(
     } else {
         when (playerState) {
             PlayerUiState.Fetching, PlayerUiState.Buffering -> "Loading…"
-            PlayerUiState.Paused -> "Paused"
             is PlayerUiState.Error -> "Playback error"
-            else -> "${track.artist} · ${formatDuration(track.duration)}"
+            else -> if (progress.durationMs > 0) {
+                val shownPositionMs =
+                    minOf(progress.positionMs, progress.durationMs).coerceAtLeast(0L)
+                "${formatDuration(shownPositionMs.milliseconds)} / " +
+                    formatDuration(progress.durationMs.milliseconds)
+            } else {
+                "${track.artist} · ${formatDuration(track.duration)}"
+            }
         }
     }
     val fraction = if (progress.durationMs > 0) {

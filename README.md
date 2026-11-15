@@ -67,9 +67,11 @@ Not in Step 3, coming in later steps:
 - Step 5: error polish + error-path tests
 
 Versioning rule: a version is tagged only when its features are
-complete, never one version per commit. Step 3 has no version tag;
-the version here is a plain development version (`0.1.0-dev`). v0.1
-is tagged only when search and play are complete and tested.
+complete, never one version per commit. v0.1.0 is the first
+release: search, play, playlists, background playback, and the
+rest of the features in this tree. Pushing a `v*` tag makes CI
+publish a versioned release; every push to main refreshes the
+rolling `dev-latest` build instead.
 
 ## Run on Windows (Android Studio)
 
