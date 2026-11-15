@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,8 +55,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,7 +89,8 @@ private const val ADD_NOTICE_BOTTOM_OFFSET_DP: Int = 88
  * triggers on the keyboard search action and on tapping the
  * magnifier icon. Typing shows a suggestion dropdown from
  * Bilibili's suggest API under the field; tapping a suggestion
- * searches it. Clearing the field returns to the home playlists.
+ * searches it. Clearing the field returns to the home playlists,
+ * and so does system Back while a search is showing.
  * Tapping a row plays it (cid fill + fresh play URL
  * first); the plus icon on a row opens the playlist chooser, and
  * adding shows a short popup notice (a different one when the
@@ -113,7 +117,9 @@ fun SearchScreen(
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
     val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
-    var query by rememberSaveable { mutableStateOf("") }
+    var queryField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
 
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
@@ -130,14 +136,26 @@ fun SearchScreen(
     var settingsMenuExpanded by remember { mutableStateOf(false) }
 
     /**
-     * Applies field text: suggestions follow typing, and clearing
-     * the field returns to the home playlists at once, with no
-     * extra tap on search.
+     * Applies a field value: suggestions follow typing, and
+     * clearing the field returns to the home playlists at once,
+     * with no extra tap on search. The field keeps a
+     * [TextFieldValue] (not a plain String) so programmatic
+     * changes can place the cursor, e.g. at the end after a
+     * suggestion tap.
      */
-    fun updateQuery(newText: String) {
-        query = newText
-        viewModel.onQueryChanged(newText)
-        if (newText.isBlank()) viewModel.search("")
+    fun applyQueryField(newValue: TextFieldValue) {
+        queryField = newValue
+        viewModel.onQueryChanged(newValue.text)
+        if (newValue.text.isBlank()) viewModel.search("")
+    }
+
+    // System Back returns to the home playlists while a search is
+    // showing (or text is typed); a second Back on clean home
+    // exits the app as usual.
+    BackHandler(
+        enabled = searchState != SearchUiState.Idle || queryField.text.isNotBlank(),
+    ) {
+        applyQueryField(TextFieldValue(""))
     }
 
     Column(
@@ -190,11 +208,11 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
         TextField(
-            value = query,
-            onValueChange = { updateQuery(it) },
+            value = queryField,
+            onValueChange = { applyQueryField(it) },
             placeholder = { Text("Search songs") },
             leadingIcon = {
-                IconButton(onClick = { viewModel.search(query) }) {
+                IconButton(onClick = { viewModel.search(queryField.text) }) {
                     Icon(
                         imageVector = MusiqueIcons.Search,
                         contentDescription = "Search",
@@ -203,8 +221,8 @@ fun SearchScreen(
                 }
             },
             trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { updateQuery("") }) {
+                if (queryField.text.isNotEmpty()) {
+                    IconButton(onClick = { applyQueryField(TextFieldValue("")) }) {
                         Icon(
                             imageVector = MusiqueIcons.Clear,
                             contentDescription = "Clear search",
@@ -228,7 +246,7 @@ fun SearchScreen(
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(
-                onSearch = { viewModel.search(query) },
+                onSearch = { viewModel.search(queryField.text) },
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -237,8 +255,9 @@ fun SearchScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Suggestion dropdown: a floating card under the field.
-        // Tapping a suggestion fills the field and searches it;
-        // the dropdown hides on search, on clear, and on blank.
+        // Tapping a suggestion fills the field (cursor at the end)
+        // and searches it; the dropdown hides on search, on clear,
+        // and on blank.
         if (suggestions.isNotEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(
@@ -260,7 +279,10 @@ fun SearchScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    query = suggestion
+                                    queryField = TextFieldValue(
+                                        text = suggestion,
+                                        selection = TextRange(suggestion.length),
+                                    )
                                     viewModel.search(suggestion)
                                 }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
