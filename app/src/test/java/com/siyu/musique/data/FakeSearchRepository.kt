@@ -1,5 +1,6 @@
 package com.siyu.musique.data
 
+import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
 import com.siyu.musique.model.Track
 import kotlinx.coroutines.delay
@@ -35,8 +36,12 @@ class FakeSearchRepository : SearchRepository {
     /**
      * A canned 192K stream. The URL is fake and never fetched: the
      * fake engine records it, the real engine never runs in tests.
+     * The preference is ignored: the fake has exactly one stream.
      */
-    override suspend fun fetchPlayUrl(track: Track): AudioStream =
+    override suspend fun fetchPlayUrl(
+        track: Track,
+        preference: AudioQuality,
+    ): AudioStream =
         AudioStream(
             qualityId = 30280,
             baseUrl = "https://fake-cdn.example/audio-${track.id}-${track.cid}.m4s",
