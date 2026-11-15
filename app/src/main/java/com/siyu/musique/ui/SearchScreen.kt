@@ -434,4 +434,47 @@ fun SearchScreen(
             }
         }
     }
+
+    // Create playlist dialog, from the plus icon on the home
+    // playlists header. Blank names are rejected, same as the
+    // playlists screen's dialog.
+    if (showCreatePlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreatePlaylistDialog = false },
+            title = { Text("New playlist") },
+            text = {
+                TextField(
+                    value = newPlaylistName,
+                    onValueChange = { newPlaylistName = it },
+                    placeholder = { Text("Playlist name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                IconButton(
+                    enabled = newPlaylistName.isNotBlank(),
+                    onClick = {
+                        viewModel.createPlaylist(newPlaylistName)
+                        showCreatePlaylistDialog = false
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Check,
+                        contentDescription = "Create",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            },
+            dismissButton = {
+                IconButton(onClick = { showCreatePlaylistDialog = false }) {
+                    Icon(
+                        imageVector = MusiqueIcons.Clear,
+                        contentDescription = "Cancel",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            },
+        )
+    }
 }
