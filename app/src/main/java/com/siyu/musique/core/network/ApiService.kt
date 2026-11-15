@@ -17,12 +17,14 @@ class ApiService(
 ) {
 
     /**
-     * Keyword search, first page only, unsigned, keyword only: no
-     * page parameter in v0.1. Returns video results only.
+     * Keyword search, unsigned, keyword + page: search/all/v2
+     * honors the page parameter (20 videos per page, numPages caps
+     * the run; verified live Nov 14, 2026). Returns the page's
+     * video tracks plus whether more pages remain.
      */
-    suspend fun search(keyword: String): List<Track> {
-        val url = "$SEARCH_URL?keyword=${WbiSigner.percentEncode(keyword)}"
-        return parseSearchResults(client.getData(url, signed = false))
+    suspend fun search(keyword: String, page: Int = 1): SearchPage {
+        val url = "$SEARCH_URL?keyword=${WbiSigner.percentEncode(keyword)}&page=$page"
+        return parseSearchPage(client.getData(url, signed = false), page)
     }
 
     /**
