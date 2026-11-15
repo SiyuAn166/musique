@@ -3,14 +3,19 @@
 # The Gradle build cannot run in the agent sandbox (the sandbox blocks
 # the Gradle daemon's loopback TCP), so CI is the build machine:
 # every push to main, and every manual run, compiles the debug APK
-# and uploads it as a build artifact. Download it from the Actions
-# run page and install it with: adb install -r app-debug.apk
+# and publishes it on the Releases page as musique.apk. Download it
+# from https://github.com/SiyuAn166/musique/releases and install it
+# with: adb install -r musique.apk
 name: Build APK
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+# Publishing a release needs write access to the repo contents.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -37,9 +42,26 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload debug APK
+      # The delivered file is musique.apk everywhere.
+      # Gradle still writes its own output name under
+      # app/build/outputs/apk/debug/; only the delivered copy is renamed.
+      - name: Rename APK to musique.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk musique.apk
+
+      - name: Upload musique APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: musique
+          path: musique.apk
           retention-days: 30
+
+      # Publish the APK on the Releases page so it can be downloaded
+      # without digging into the Actions run: one rolling "dev-latest"
+      # release, updated on every push. This is not a version tag;
+      # versions are tagged only when their features are complete.
+      - name: Publish musique.apk to Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view dev-latest >/dev/null 2>&1 || gh release create dev-latest --title "Latest dev build" --notes "Rolling dev build from main. Download musique.apk below."
+          gh release upload dev-latest musique.apk --clobber
