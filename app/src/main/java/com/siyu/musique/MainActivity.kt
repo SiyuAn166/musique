@@ -44,6 +44,9 @@ class MainActivity : ComponentActivity() {
         val downloadStore = BiliDependencies.createDownloadStore(applicationContext)
         val audioFileDownloader = BiliDependencies.createAudioFileDownloader()
         val downloadsDir = BiliDependencies.downloadsDir(applicationContext)
+        val installedVersion = BiliDependencies.installedVersion(applicationContext)
+        val updateChecker = BiliDependencies.createUpdateChecker(installedVersion.versionCode)
+        val updatesDir = BiliDependencies.updatesDir(applicationContext)
         setContent {
             MusiqueApp(
                 repository = repository,
@@ -56,6 +59,9 @@ class MainActivity : ComponentActivity() {
                 downloadStore = downloadStore,
                 audioFileDownloader = audioFileDownloader,
                 downloadsDir = downloadsDir,
+                updateChecker = updateChecker,
+                installedVersionName = installedVersion.versionName,
+                updatesDir = updatesDir,
             )
         }
     }

@@ -1,6 +1,9 @@
 package com.siyu.musique.data
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.media3.datasource.cache.SimpleCache
 import java.io.File
 import com.siyu.musique.core.network.ApiService
@@ -72,6 +75,39 @@ object BiliDependencies {
     /** The app-private downloads dir, under filesDir: uninstall deletes it with everything else. */
     fun downloadsDir(context: Context): File =
         File(context.applicationContext.filesDir, DOWNLOADS_DIR_NAME)
+
+    /**
+     * The installed build's version, read from the package
+     * manager: the versionCode the update check compares against
+     * the release, and the versionName the settings row shows.
+     * No generated BuildConfig class is involved, so the
+     * kotlinc full-compile check needs no extra stub.
+     */
+    fun installedVersion(context: Context): InstalledVersion {
+        val appContext = context.applicationContext
+        val packageManager = appContext.packageManager
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(
+                appContext.packageName,
+                PackageManager.PackageInfoFlags.of(0),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(appContext.packageName, 0)
+        }
+        return InstalledVersion(
+            versionCode = PackageInfoCompat.getLongVersionCode(packageInfo).toInt(),
+            versionName = packageInfo.versionName ?: "",
+        )
+    }
+
+    /** The update check, against the public GitHub releases API with no auth. Manual only; nothing checks in the background. */
+    fun createUpdateChecker(installedVersionCode: Int): UpdateChecker =
+        GitHubUpdateChecker(OkHttpUpdateGateway(), installedVersionCode)
+
+    /** The updates dir, under cacheDir: the downloaded APK lives here until the system installer reads it. */
+    fun updatesDir(context: Context): File =
+        File(context.applicationContext.cacheDir, UPDATES_DIR_NAME)
 
     fun createSearchRepository(context: Context): SearchRepository {
         val appContext = context.applicationContext

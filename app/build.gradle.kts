@@ -12,10 +12,11 @@ android {
     // kind CI produces). CI runners are ephemeral, so the
     // default debug key changed on every run and Android
     // rejected updates as a signature mismatch. This keystore
-    // lives in this private repo; never regenerate it, or
-    // installed copies will refuse the next update. The
-    // passwords live here too: the repo is private and solo,
-    // and a public repo would need a fresh key anyway.
+    // lives in this repo, which is PUBLIC: the keystore and the
+    // passwords below are world-readable. Never regenerate the
+    // key casually, or installed copies will refuse the next
+    // update; rotating to a fresh key is a deliberate decision
+    // (it forces one uninstall) and is still pending.
     signingConfigs {
         create("musique") {
             storeFile = file("../keystore/musique.keystore")
@@ -29,7 +30,12 @@ android {
         applicationId = "com.siyu.musique"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // The versionCode is the CI run number on GitHub Actions
+        // (monotonic across runs, so every published APK compares
+        // newer than the last) and 1 for local builds. The in-app
+        // update check compares this against the versionCode in
+        // the release's version.json asset.
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         // v0.1.0 tagged Nov 15, 2026. Standing rule: tag a version
         // only when its features are complete, never one version
         // per commit.

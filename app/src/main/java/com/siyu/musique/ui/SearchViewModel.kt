@@ -14,6 +14,7 @@ import com.siyu.musique.data.AppCache
 import com.siyu.musique.data.AudioFileDownloader
 import com.siyu.musique.data.DownloadRecord
 import com.siyu.musique.data.DownloadStore
+import com.siyu.musique.data.GitHubUpdateChecker
 import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryDownloadStore
 import com.siyu.musique.data.InMemoryPlaybackModeStore
@@ -21,7 +22,12 @@ import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.NoOpAudioFileDownloader
+import com.siyu.musique.data.NoOpUpdateChecker
+import com.siyu.musique.data.UpdateCheckResult
+import com.siyu.musique.data.UpdateChecker
+import com.siyu.musique.data.UpdateFailureKind
 import com.siyu.musique.data.defaultDownloadsDir
+import com.siyu.musique.data.defaultUpdatesDir
 import com.siyu.musique.data.downloadFileName
 import com.siyu.musique.data.PlaybackMode
 import com.siyu.musique.data.PlaybackModeStore
@@ -116,6 +122,38 @@ sealed interface PlayerUiState {
 }
 
 /**
+ * The update check states for the settings screen. The check is
+ * manual only: tapping the settings row starts it, and nothing
+ * checks in the background. [Available] carries the release tag
+ * and APK size for the dialog; the download URL stays in the
+ * ViewModel's pending update. [ReadyToInstall] carries the
+ * downloaded APK file, and the settings screen fires the system
+ * installer from it.
+ */
+sealed interface UpdateUiState {
+    /** No check has run, or the dialog was dismissed. */
+    data object Idle : UpdateUiState
+
+    /** Asking GitHub for the latest release. */
+    data object Checking : UpdateUiState
+
+    /** The installed build is as new as the latest release. */
+    data object UpToDate : UpdateUiState
+
+    /** A newer release exists; the dialog offers the download. */
+    data class Available(val tag: String, val apkSize: Long) : UpdateUiState
+
+    /** Downloading the APK; [fraction] is 0..1 when the total size is known, null otherwise. */
+    data class Downloading(val fraction: Float?) : UpdateUiState
+
+    /** The APK is downloaded and verified; the dialog offers the install. */
+    data class ReadyToInstall(val apkFile: File) : UpdateUiState
+
+    /** The check or the download failed; the dialog offers a retry. */
+    data class Failed(val kind: UpdateFailureKind) : UpdateUiState
+}
+
+/**
  * Playback progress in milliseconds. [durationMs] is the engine's
  * duration when known, otherwise the current track's duration; 0
  * when neither is known. The UI derives the slider fraction and the
@@ -192,6 +230,10 @@ class SearchViewModel(
     private val audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
     private val downloadsDir: File = defaultDownloadsDir(),
     private val random: Random = Random.Default,
+    private val updateChecker: UpdateChecker = NoOpUpdateChecker,
+    /** The installed version name, shown on the settings update row. Empty when unwired (tests). */
+    val installedVersionName: String = "",
+    private val updatesDir: File = defaultUpdatesDir(),
 ) : ViewModel(), PlaybackControls {
 
     private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -290,6 +332,17 @@ class SearchViewModel(
     /** Whether a cache clear is running; the settings screen disables its clear button meanwhile. */
     private val _clearingCache = MutableStateFlow(false)
     val clearingCache: StateFlow<Boolean> = _clearingCache.asStateFlow()
+
+    private val _updateState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    val updateState: StateFlow<UpdateUiState> = _updateState.asStateFlow()
+
+    /**
+     * The update the check found, kept while the dialog offers the
+     * download and across a failed download, so a retry needs no
+     * fresh check. Null unless a check found an update and the
+     * dialog has not been dismissed since.
+     */
+    private var pendingUpdate: UpdateCheckResult.Available? = null
 
     /** The app log lines, for the log screen. */
     val logLines: StateFlow<List<LogLine>> = logger.buffer.snapshot
@@ -1697,6 +1750,105 @@ class SearchViewModel(
         }
     }
 
+    /**
+     * Checks GitHub for a newer release. Manual only, from the
+     * settings row; nothing checks in the background. Ignored
+     * while a check or a download is already running. A rogue
+     * exception from the checker (the unwired default throws)
+     * lands in the failed state, never a crash.
+     */
+    fun checkForUpdate() {
+        val current = _updateState.value
+        if (current is UpdateUiState.Checking || current is UpdateUiState.Downloading) return
+        viewModelScope.launch {
+            _updateState.value = UpdateUiState.Checking
+            val result = try {
+                updateChecker.checkForUpdate()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                UpdateCheckResult.Failed(UpdateFailureKind.NETWORK)
+            }
+            when (result) {
+                is UpdateCheckResult.UpToDate -> {
+                    pendingUpdate = null
+                    _updateState.value = UpdateUiState.UpToDate
+                    logger.i("Update", "already on the latest release")
+                }
+                is UpdateCheckResult.Available -> {
+                    pendingUpdate = result
+                    _updateState.value = UpdateUiState.Available(
+                        tag = result.tag,
+                        apkSize = result.apkSize,
+                    )
+                    logger.i("Update", "update available: ${result.tag} (${result.apkSize} bytes)")
+                }
+                is UpdateCheckResult.Failed -> {
+                    pendingUpdate = null
+                    _updateState.value = UpdateUiState.Failed(result.kind)
+                    logger.w("Update", "check failed (${result.kind})")
+                }
+            }
+        }
+    }
+
+    /**
+     * Downloads the pending update's APK into the updates dir,
+     * reporting progress, then offers the install. Ignored without
+     * a pending update or while a download runs. The pending
+     * update survives a failed download, so [retryUpdate] can
+     * retry the download without a fresh check.
+     */
+    fun downloadUpdate() {
+        val update = pendingUpdate ?: return
+        if (_updateState.value is UpdateUiState.Downloading) return
+        viewModelScope.launch {
+            _updateState.value = UpdateUiState.Downloading(fraction = null)
+            val target = File(updatesDir, GitHubUpdateChecker.APK_ASSET)
+            try {
+                updateChecker.downloadUpdate(update, target) { downloaded, total ->
+                    val fraction = total?.takeIf { it > 0 }
+                        ?.let { downloaded.toFloat() / it }
+                    _updateState.value = UpdateUiState.Downloading(fraction)
+                }
+                _updateState.value = UpdateUiState.ReadyToInstall(target)
+                logger.i("Update", "downloaded ${update.tag} (${target.length()} bytes)")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _updateState.value = UpdateUiState.Failed(UpdateFailureKind.DOWNLOAD_FAILED)
+                logger.w("Update", "download failed (${e::class.simpleName})")
+            }
+        }
+    }
+
+    /**
+     * Retries after a failure: a failed download retries the
+     * download when the update is still pending, anything else
+     * re-runs the check. Ignored unless the state is failed.
+     */
+    fun retryUpdate() {
+        val failed = _updateState.value as? UpdateUiState.Failed ?: return
+        if (failed.kind == UpdateFailureKind.DOWNLOAD_FAILED && pendingUpdate != null) {
+            downloadUpdate()
+        } else {
+            checkForUpdate()
+        }
+    }
+
+    /**
+     * Drops the update dialog state back to idle when the dialog
+     * is dismissed. Ignored while a check or download runs, so
+     * dismissing the dialog never cancels work in flight; the
+     * row reopens the dialog onto the running state.
+     */
+    fun dismissUpdateState() {
+        val current = _updateState.value
+        if (current is UpdateUiState.Checking || current is UpdateUiState.Downloading) return
+        _updateState.value = UpdateUiState.Idle
+        pendingUpdate = null
+    }
+
     override fun onCleared() {
         playJob?.cancel()
         progressJob?.cancel()
@@ -1885,7 +2037,7 @@ fun mapSearchError(error: Throwable, query: String): SearchUiState.Error {
 /** Maps a playback failure (detail or play URL resolution) onto the message the player error state shows. */
 fun mapPlayerError(error: Throwable): String = describeFailure(error).first
 
-/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, and the quality, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, the update checker and updates dir, and the quality, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
@@ -1897,6 +2049,9 @@ class SearchViewModelFactory(
     private val downloadStore: DownloadStore = InMemoryDownloadStore(),
     private val audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
     private val downloadsDir: File = defaultDownloadsDir(),
+    private val updateChecker: UpdateChecker = NoOpUpdateChecker,
+    private val installedVersionName: String = "",
+    private val updatesDir: File = defaultUpdatesDir(),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1915,6 +2070,9 @@ class SearchViewModelFactory(
             downloadStore,
             audioFileDownloader,
             downloadsDir,
+            updateChecker = updateChecker,
+            installedVersionName = installedVersionName,
+            updatesDir = updatesDir,
         ) as T
     }
 }

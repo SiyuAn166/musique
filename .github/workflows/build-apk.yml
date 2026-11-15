@@ -57,10 +57,14 @@ jobs:
           retention-days: 30
 
       # Versioned releases: pushing a v* tag publishes a release for
-      # that tag with generated notes.
+      # that tag with generated notes. version.json rides along so
+      # the in-app update check can compare versionCodes: it carries
+      # this run's number, the same number Gradle baked into the APK
+      # as versionCode, plus the tag name for the update dialog.
       - name: Publish versioned release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --title "Musique $GITHUB_REF_NAME" --generate-notes musique.apk
+          printf '{"versionCode": %s, "tag": "%s"}' "$GITHUB_RUN_NUMBER" "$GITHUB_REF_NAME" > version.json
+          gh release create "$GITHUB_REF_NAME" --title "Musique $GITHUB_REF_NAME" --generate-notes musique.apk version.json
