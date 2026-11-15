@@ -44,7 +44,20 @@ enum class SearchErrorKind {
 sealed interface SearchUiState {
     data object Idle : SearchUiState
     data object Loading : SearchUiState
-    data class Success(val tracks: List<Track>, val query: String) : SearchUiState
+
+    /**
+     * The accumulated tracks for [query] across every page loaded so
+     * far. [hasMore] is true while another page remains;
+     * [loadingMore] is true while that page is being fetched, so the
+     * list can show a loading row at the bottom.
+     */
+    data class Success(
+        val tracks: List<Track>,
+        val query: String,
+        val hasMore: Boolean = false,
+        val loadingMore: Boolean = false,
+    ) : SearchUiState
+
     data class Empty(val query: String) : SearchUiState
     data class Error(val message: String, val kind: SearchErrorKind, val query: String) :
         SearchUiState
@@ -112,6 +125,7 @@ class SearchViewModel(
 
     private var lastQuery: String = ""
     private var playJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     /** Incremented on every tap; stale async work checks against it. */
     private var playIntent: Int = 0
@@ -177,6 +191,7 @@ class SearchViewModel(
 
     fun search(query: String) {
         val trimmed = query.trim()
+        loadMoreJob?.cancel()
         if (trimmed.isEmpty()) {
             _searchState.value = SearchUiState.Idle
             return
@@ -189,7 +204,11 @@ class SearchViewModel(
                 _searchState.value = if (tracks.isEmpty()) {
                     SearchUiState.Empty(trimmed)
                 } else {
-                    SearchUiState.Success(tracks, trimmed)
+                    SearchUiState.Success(
+                        tracks,
+                        trimmed,
+                        hasMore = repository.hasMorePages,
+                    )
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -199,28 +218,77 @@ class SearchViewModel(
         }
     }
 
-    /** Re-runs the last non-blank search. Does nothing before any search. */
+    /** Re-runs the last non-blank search, from page 1. Does nothing before any search. */
     fun retry() {
         if (lastQuery.isNotEmpty()) search(lastQuery)
     }
 
     /**
+     * Loads the next page of the current keyword search and appends
+     * it to the list. No-op unless the current state is a Success
+     * with more pages and no load already in flight. A failure keeps
+     * the loaded list and drops the loading row; the next scroll to
+     * the bottom retries.
+     */
+    fun loadMore() {
+        val state = _searchState.value as? SearchUiState.Success ?: return
+        if (!state.hasMore || state.loadingMore) return
+        _searchState.value = state.copy(loadingMore = true)
+        loadMoreJob = viewModelScope.launch {
+            try {
+                val result = repository.loadMore()
+                val current = _searchState.value as? SearchUiState.Success ?: return@launch
+                if (current.query != state.query) return@launch
+                _searchState.value = current.copy(
+                    tracks = result.tracks,
+                    hasMore = result.hasMore,
+                    loadingMore = false,
+                )
+                logger.i(
+                    SEARCH_TAG,
+                    "search page loaded query=\"${state.query}\" page=${result.page} " +
+                        "count=${result.tracks.size} hasMore=${result.hasMore}",
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val current = _searchState.value as? SearchUiState.Success
+                if (current != null && current.query == state.query) {
+                    _searchState.value = current.copy(loadingMore = false)
+                }
+                logger.e(SEARCH_TAG, "search page failed ${describeError(e)}")
+            }
+        }
+    }
+
+    /**
      * Play [track]: fill in the cid when missing, resolve a fresh play
-     * URL, hand it to the engine. The current track and the fetching
+     * URL, hand it to the engine. The tap is logged as the very first
+     * statement, so it always leaves a trace even if something below
+     * throws; a throwing engine stop is logged and swallowed, never
+     * allowed to kill the tap. The current track and the fetching
      * state are set synchronously so a tap never looks dead; failures
      * land in [PlayerUiState.Error].
      */
     fun play(track: Track) {
+        logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid}")
         playIntent++
         val intent = playIntent
         refetchedForIntent = false
         playJob?.cancel()
-        playerEngine.stop()
+        try {
+            playerEngine.stop()
+        } catch (e: Exception) {
+            logger.e(
+                TAG,
+                "player stop failed intent=$intent " +
+                    "${e::class.simpleName}: ${e.message}",
+            )
+        }
         engineHasMedia = false
         _currentTrack.value = track
         _playerState.value = PlayerUiState.Fetching
         _isPlaying.value = true
-        logger.i(TAG, "play intent=$intent bvid=${track.id} cid=${track.cid}")
         playJob = viewModelScope.launch {
             try {
                 var current = track
@@ -360,6 +428,7 @@ class SearchViewModel(
 
     companion object {
         const val TAG = "Player"
+        const val SEARCH_TAG = "Search"
     }
 }
 
