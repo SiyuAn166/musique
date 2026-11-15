@@ -90,18 +90,11 @@ fun MiniPlayerBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
         shape = RoundedCornerShape(24.dp),
-        // With no track loaded the bar is only a hint, so it
-        // carries no background and no shadow; once a track is
-        // loaded it becomes the translucent floating card.
         colors = CardDefaults.cardColors(
-            containerColor = if (track == null) {
-                Color.Transparent
-            } else {
-                Color.White.copy(alpha = 0.9f)
-            },
+            containerColor = Color.White.copy(alpha = 0.9f),
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (track == null) 0.dp else 6.dp,
+            defaultElevation = 6.dp,
         ),
     ) {
         Column {
@@ -127,13 +120,7 @@ fun MiniPlayerBar(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                if (track == null) {
-                                    Color.Transparent
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                },
-                            ),
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -236,16 +223,14 @@ fun MiniPlayerBar(
                     }
                 }
             }
-            if (track != null) {
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    trackColor = MaterialTheme.colorScheme.outlineVariant,
-                )
-            }
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = MaterialTheme.colorScheme.onSurface,
+                trackColor = MaterialTheme.colorScheme.outlineVariant,
+            )
         }
     }
 }
