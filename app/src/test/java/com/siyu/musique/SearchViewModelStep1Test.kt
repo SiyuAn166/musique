@@ -1,0 +1,218 @@
+package com.siyu.musique
+
+import com.siyu.musique.core.network.BiliApiException
+import com.siyu.musique.core.network.BiliNetworkException
+import com.siyu.musique.core.network.BiliParseException
+import com.siyu.musique.data.FakeSearchRepository
+import com.siyu.musique.data.SearchRepository
+import com.siyu.musique.model.Track
+import com.siyu.musique.ui.SearchErrorKind
+import com.siyu.musique.ui.SearchUiState
+import com.siyu.musique.ui.SearchViewModel
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class SearchViewModelStep1Test {
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    private class ThrowingRepository(private val error: Throwable) : SearchRepository {
+        var searchCalls = 0
+        override suspend fun search(query: String): List<Track> {
+            searchCalls++
+            throw error
+        }
+
+        override suspend fun fetchDetail(track: Track): Track = track
+    }
+
+    private class DetailFillingRepository(
+        private val delegate: SearchRepository = FakeSearchRepository(),
+    ) : SearchRepository by delegate {
+        var detailCalls = 0
+        override suspend fun fetchDetail(track: Track): Track {
+            detailCalls++
+            return track.copy(cid = "999", title = "Detailed Title")
+        }
+    }
+
+    @Test
+    fun `initial state is Idle, no automatic search`() = runTest(testDispatcher) {
+        val repository = FakeSearchRepository()
+        val viewModel = SearchViewModel(repository)
+        advanceUntilIdle()
+        assertTrue(viewModel.searchState.value is SearchUiState.Idle)
+        assertEquals(0, repository.searchCalls)
+    }
+
+    @Test
+    fun `blank search returns to Idle without calling the repository`() =
+        runTest(testDispatcher) {
+            val repository = FakeSearchRepository()
+            val viewModel = SearchViewModel(repository)
+            viewModel.search("   ")
+            advanceUntilIdle()
+            assertTrue(viewModel.searchState.value is SearchUiState.Idle)
+            assertEquals(0, repository.searchCalls)
+        }
+
+    @Test
+    fun `network failure maps to the NETWORK error state`() = runTest(testDispatcher) {
+        val viewModel = SearchViewModel(
+            ThrowingRepository(BiliNetworkException("no network")),
+        )
+        viewModel.search("test")
+        advanceUntilIdle()
+        val state = viewModel.searchState.value as SearchUiState.Error
+        assertEquals(SearchErrorKind.NETWORK, state.kind)
+        assertTrue(state.message.contains("Network problem"))
+        assertEquals("test", state.query)
+    }
+
+    @Test
+    fun `minus 352 maps to the BLOCKED error state`() = runTest(testDispatcher) {
+        val viewModel = SearchViewModel(
+            ThrowingRepository(BiliApiException(-352, "risk")),
+        )
+        viewModel.search("test")
+        advanceUntilIdle()
+        val state = viewModel.searchState.value as SearchUiState.Error
+        assertEquals(SearchErrorKind.BLOCKED, state.kind)
+        assertEquals("Request blocked, try again shortly.", state.message)
+    }
+
+    @Test
+    fun `minus 799 maps to the RATE_LIMITED error state`() = runTest(testDispatcher) {
+        val viewModel = SearchViewModel(
+            ThrowingRepository(BiliApiException(-799, "too frequent")),
+        )
+        viewModel.search("test")
+        advanceUntilIdle()
+        val state = viewModel.searchState.value as SearchUiState.Error
+        assertEquals(SearchErrorKind.RATE_LIMITED, state.kind)
+    }
+
+    @Test
+    fun `parse failure maps to the PARSE error state`() = runTest(testDispatcher) {
+        val viewModel = SearchViewModel(
+            ThrowingRepository(BiliParseException("bad json")),
+        )
+        viewModel.search("test")
+        advanceUntilIdle()
+        val state = viewModel.searchState.value as SearchUiState.Error
+        assertEquals(SearchErrorKind.PARSE, state.kind)
+    }
+
+    @Test
+    fun `other API codes map to the API error state with the code`() = runTest(testDispatcher) {
+        val viewModel = SearchViewModel(
+            ThrowingRepository(BiliApiException(-101, "not logged in")),
+        )
+        viewModel.search("test")
+        advanceUntilIdle()
+        val state = viewModel.searchState.value as SearchUiState.Error
+        assertEquals(SearchErrorKind.API, state.kind)
+        assertTrue(state.message.contains("-101"))
+    }
+
+    @Test
+    fun `retry re-runs the last query`() = runTest(testDispatcher) {
+        val repository = ThrowingRepository(BiliNetworkException("no network"))
+        val viewModel = SearchViewModel(repository)
+        viewModel.search("hello")
+        advanceUntilIdle()
+        assertEquals(1, repository.searchCalls)
+        viewModel.retry()
+        advanceUntilIdle()
+        assertEquals(2, repository.searchCalls)
+    }
+
+    @Test
+    fun `retry before any search does nothing`() = runTest(testDispatcher) {
+        val repository = FakeSearchRepository()
+        val viewModel = SearchViewModel(repository)
+        viewModel.retry()
+        advanceUntilIdle()
+        assertEquals(0, repository.searchCalls)
+        assertTrue(viewModel.searchState.value is SearchUiState.Idle)
+    }
+
+    @Test
+    fun `play fills an empty cid from details and updates the list`() = runTest(testDispatcher) {
+        val repository = DetailFillingRepository()
+        val viewModel = SearchViewModel(repository)
+        viewModel.search("夜曲")
+        advanceUntilIdle()
+        val track = (viewModel.searchState.value as SearchUiState.Success).tracks[0]
+        val noCid = track.copy(cid = "")
+        viewModel.play(noCid)
+        advanceUntilIdle()
+        assertEquals("999", viewModel.currentTrack.value?.cid)
+        assertEquals("Detailed Title", viewModel.currentTrack.value?.title)
+        val updated = (viewModel.searchState.value as SearchUiState.Success).tracks[0]
+        assertEquals("999", updated.cid)
+        assertEquals(1, repository.detailCalls)
+    }
+
+    @Test
+    fun `play skips the detail call when cid is already filled`() = runTest(testDispatcher) {
+        val repository = DetailFillingRepository()
+        val viewModel = SearchViewModel(repository)
+        val track = Track(
+            id = "BV1q4FTeBEMj",
+            cid = "28139389900",
+            title = "t",
+            artist = "a",
+            cover = "",
+            duration = 228.seconds,
+        )
+        viewModel.play(track)
+        advanceUntilIdle()
+        assertEquals(0, repository.detailCalls)
+        assertEquals(track, viewModel.currentTrack.value)
+    }
+
+    @Test
+    fun `play keeps the tapped track when the detail call fails`() = runTest(testDispatcher) {
+        val repository = object : SearchRepository by FakeSearchRepository() {
+            override suspend fun fetchDetail(track: Track): Track {
+                throw BiliNetworkException("no network")
+            }
+        }
+        val viewModel = SearchViewModel(repository)
+        val track = Track(
+            id = "BV1q4FTeBEMj",
+            cid = "",
+            title = "t",
+            artist = "a",
+            cover = "",
+            duration = 228.seconds,
+        )
+        viewModel.play(track)
+        advanceUntilIdle()
+        assertEquals(track, viewModel.currentTrack.value)
+        assertTrue(viewModel.isPlaying.value)
+    }
+}
