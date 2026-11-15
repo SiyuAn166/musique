@@ -57,11 +57,15 @@ jobs:
 
       # Publish the APK on the Releases page so it can be downloaded
       # without digging into the Actions run: one rolling "dev-latest"
-      # release, updated on every push. This is not a version tag;
+      # release, recreated on every push so the tag, the commit, and
+      # the timestamp on the page always match the latest build.
+      # (Uploading with --clobber alone replaces the file but leaves
+      # the tag and the page stuck at the first build, which looked
+      # like the release never updated.) This is not a version tag;
       # versions are tagged only when their features are complete.
       - name: Publish musique.apk to Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view dev-latest >/dev/null 2>&1 || gh release create dev-latest --title "Latest dev build" --notes "Rolling dev build from main. Download musique.apk below."
-          gh release upload dev-latest musique.apk --clobber
+          gh release delete dev-latest -y --cleanup-tag 2>/dev/null || true
+          gh release create dev-latest --title "Latest dev build" --notes "Rolling dev build from main. Download musique.apk below." musique.apk
