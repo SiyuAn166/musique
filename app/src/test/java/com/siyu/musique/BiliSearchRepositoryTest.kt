@@ -161,4 +161,43 @@ class BiliSearchRepositoryTest {
         assertEquals("https://cover.example/x.jpg", detailed.cover)
         assertEquals(228_000L, detailed.duration.inWholeMilliseconds)
     }
+
+    @Test
+    fun `fetchDetail keeps the search track cover when the detail cover differs`() = runTest {
+        val stack = Stack(FakeGateway())
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        val searchTrack = Track(
+            id = "BV1q4FTeBEMj",
+            cid = "",
+            title = "Search Title",
+            artist = "Search Artist",
+            cover = "https://cover.example/x.jpg",
+            duration = 100.seconds,
+        )
+        val detailed = repository.fetchDetail(searchTrack)
+        assertEquals("28139389900", detailed.cid)
+        assertEquals("https://cover.example/x.jpg", detailed.cover)
+    }
+
+    @Test
+    fun `fetchDetail fills an empty cover from the detail response, upgraded to https`() = runTest {
+        val stack = Stack(FakeGateway())
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        val searchTrack = Track(
+            id = "BV1q4FTeBEMj",
+            cid = "",
+            title = "Search Title",
+            artist = "Search Artist",
+            cover = "",
+            duration = 100.seconds,
+        )
+        val detailed = repository.fetchDetail(searchTrack)
+        assertEquals("28139389900", detailed.cid)
+        assertEquals(
+            "https://i2.hdslb.com/bfs/archive/25c409c43790cc13bf9ebc473b36c4f650527653.jpg",
+            detailed.cover,
+        )
+    }
 }

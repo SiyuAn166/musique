@@ -141,11 +141,16 @@ class BiliSearchRepository(
     override suspend fun fetchDetail(track: Track): Track {
         try {
             val detail = apiService.fetchDetail(track.id)
+            // The cover prefers the track's own: the search cover is
+            // already showing in the list, so it is known good, while
+            // the detail pic has come back in a form that fails to
+            // load (plain http:// before normalizeCover upgraded
+            // it). The detail cover only fills an empty one.
             val merged = track.copy(
                 cid = detail.cid,
                 title = detail.title.ifEmpty { track.title },
                 artist = detail.artist.ifEmpty { track.artist },
-                cover = detail.cover.ifEmpty { track.cover },
+                cover = track.cover.ifEmpty { detail.cover },
                 duration = if (detail.duration > Duration.ZERO) detail.duration else track.duration,
             )
             logger.i(TAG, "detail ok bvid=${track.id} cid=${merged.cid}")

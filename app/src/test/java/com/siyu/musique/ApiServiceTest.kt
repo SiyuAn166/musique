@@ -128,7 +128,10 @@ assertEquals("BV1q4FTeBEMj", track.id)
 assertEquals("28139389900", track.cid)
 assertEquals("无损音乐合集", track.artist)
 assertEquals(228_000L, track.duration.inWholeMilliseconds)
-assertTrue(track.cover.startsWith("http://i2.hdslb.com/"))
+assertEquals(
+    "https://i2.hdslb.com/bfs/archive/25c409c43790cc13bf9ebc473b36c4f650527653.jpg",
+    track.cover,
+)
 }
 
 @Test

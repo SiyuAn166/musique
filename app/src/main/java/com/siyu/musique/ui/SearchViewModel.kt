@@ -164,6 +164,14 @@ class SearchViewModel(
     private val _qualityPreference = MutableStateFlow(AudioQuality.BEST)
     val qualityPreference: StateFlow<AudioQuality> = _qualityPreference.asStateFlow()
 
+    /**
+     * Player volume, 0f (silent) to 1f (full). Full by default,
+     * in memory only: it resets to full on restart. Applied to
+     * the engine, which keeps it across track changes.
+     */
+    private val _volume = MutableStateFlow(1f)
+    val volume: StateFlow<Float> = _volume.asStateFlow()
+
     /** The playlists in creation order, default first. Empty only until the initial load lands. */
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
     val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
@@ -512,6 +520,13 @@ class SearchViewModel(
      * state). With nothing loaded, only the next play is affected.
      * A no-op when the preference is unchanged.
      */
+    /** Set the player volume, clamped to [0f, 1f]. */
+    fun setVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        _volume.value = clamped
+        playerEngine.setVolume(clamped)
+    }
+
     fun setQualityPreference(preference: AudioQuality) {
         val previous = _qualityPreference.value
         if (previous == preference) return

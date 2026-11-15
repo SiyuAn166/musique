@@ -12,6 +12,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.siyu.musique.core.logging.MusiqueLog
 import com.siyu.musique.core.network.BiliClient
 import java.io.File
 
@@ -83,6 +84,11 @@ class ExoPlayerEngine(context: Context) : PlayerEngine {
     }
 
     override fun play(url: String, cacheKey: String) {
+        // Diagnostic for the audio cache: how many bytes of this
+        // key are already stored before the stream starts. The key
+        // holds bvid + cid + quality only, never the URL.
+        val cachedBytes = cache.getCachedLength(cacheKey, 0L, Long.MAX_VALUE)
+        MusiqueLog.i(TAG, "audio cache $cachedBytes bytes stored key=$cacheKey")
         val item = MediaItem.Builder()
             .setUri(url)
             .setCustomCacheKey(cacheKey)
@@ -116,12 +122,18 @@ class ExoPlayerEngine(context: Context) : PlayerEngine {
         else duration.coerceAtLeast(0L)
     }
 
+    override fun setVolume(volume: Float) {
+        player.volume = volume.coerceIn(0f, 1f)
+    }
+
     override fun release() {
         player.release()
         cache.release()
     }
 
     companion object {
+        private const val TAG = "Player"
+
         const val CACHE_DIR = "exo_audio_cache"
 
         /** 200MB, least recently used eviction, per the v0.1 design. */

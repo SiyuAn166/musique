@@ -60,6 +60,7 @@ fun SongRow(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(SONG_ROW_COVER_SIZE_DP.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clip(RoundedCornerShape(8.dp)),
             )
         } else {

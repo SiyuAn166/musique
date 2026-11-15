@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -47,8 +46,9 @@ internal fun songCountLabel(count: Int): String =
     if (count == 1) "1 song" else "$count songs"
 
 /**
- * Playlists screen: a large "Playlists" title, a plus icon button
- * at the top right to create a new playlist, and flat rows with a
+ * Playlists screen: no title, a back icon at the top left and a
+ * plus icon button at the top right to create a new playlist, and
+ * flat rows with a
  * small stacked-covers thumbnail, the playlist name, the song
  * count, and a chevron. Tapping a row opens the detail screen. The
  * default playlist always exists; creating a playlist asks for its
@@ -79,7 +79,8 @@ fun PlaylistsScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 8.dp, top = 8.dp),
+                .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
                 Icon(
@@ -88,19 +89,7 @@ fun PlaylistsScreen(
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Playlists",
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
+            Spacer(modifier = Modifier.weight(1f))
             IconButton(
                 onClick = {
                     newName = ""

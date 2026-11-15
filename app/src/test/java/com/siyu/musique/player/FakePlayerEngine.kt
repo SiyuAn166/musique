@@ -36,6 +36,13 @@ class FakePlayerEngine : PlayerEngine {
     /** Positions passed to [seekTo], in order. */
     val seekCalls = mutableListOf<Long>()
 
+    /** The volume [setVolume] last set; 1f (full) by default. */
+    var volume: Float = 1f
+        private set
+
+    /** Volumes passed to [setVolume], in order. */
+    val volumeCalls = mutableListOf<Float>()
+
     override fun setListener(listener: PlayerEngine.Listener?) {
         this.listener = listener
     }
@@ -66,6 +73,11 @@ class FakePlayerEngine : PlayerEngine {
     override fun currentPositionMs(): Long = positionMs
 
     override fun durationMs(): Long = durationMsValue
+
+    override fun setVolume(volume: Float) {
+        this.volume = volume
+        volumeCalls.add(volume)
+    }
 
     override fun release() {
         releaseCalls++

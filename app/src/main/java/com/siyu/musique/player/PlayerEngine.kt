@@ -76,6 +76,14 @@ interface PlayerEngine {
      */
     fun durationMs(): Long
 
+    /**
+     * Player-level volume, 0f (silent) to 1f (full). Callers clamp
+     * to [0f, 1f]; engines clamp defensively. Applies to the
+     * player, not the item, so it survives track changes and works
+     * before any item is loaded.
+     */
+    fun setVolume(volume: Float)
+
     /** Release all player resources. The engine must not be used after this. */
     fun release()
 
@@ -99,5 +107,6 @@ object NoOpPlayerEngine : PlayerEngine {
     override fun seekTo(positionMs: Long) = Unit
     override fun currentPositionMs(): Long = 0L
     override fun durationMs(): Long = PlayerEngine.UNKNOWN_DURATION
+    override fun setVolume(volume: Float) = Unit
     override fun release() = Unit
 }

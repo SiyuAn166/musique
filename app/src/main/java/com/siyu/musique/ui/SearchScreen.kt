@@ -1,6 +1,7 @@
 package com.siyu.musique.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -56,8 +57,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 private const val LOAD_MORE_THRESHOLD = 3
 
 /**
- * Search screen: a large "Search" title, the list icon (playlists)
- * and three-dot icon (settings menu, with the debug log inside) at
+ * Search screen: no title, just the list icon (playlists) and
+ * three-dot icon (settings menu, with the debug log inside) at
  * the top right, a light-grey rounded
  * search field, and flat result rows with hairline dividers. Search
  * triggers on the keyboard search action and on tapping the
@@ -99,14 +100,9 @@ fun SearchScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 8.dp, top = 8.dp),
+            horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Search",
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
             IconButton(onClick = onOpenPlaylists) {
                 Icon(
                     imageVector = MusiqueIcons.ListBulleted,

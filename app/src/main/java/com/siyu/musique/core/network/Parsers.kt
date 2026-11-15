@@ -101,9 +101,16 @@ fun parseSearchPage(data: JsonElement, requestedPage: Int): SearchPage {
     return SearchPage(tracks, hasMore = page < numPages)
 }
 
-/** Covers starting with // get an https: prefix; anything else passes through. */
+/**
+ * Covers starting with // get an https: prefix, and plain http://
+ * covers are upgraded to https://: the details response returns an
+ * http:// pic (see the VIEW_DATA fixture), and Android blocks
+ * cleartext HTTP by default, so an http cover never loads on
+ * device. Anything else passes through.
+ */
 fun normalizeCover(pic: String): String = when {
     pic.startsWith("//") -> "https:$pic"
+    pic.startsWith("http://") -> "https://" + pic.removePrefix("http://")
     else -> pic
 }
 

@@ -86,6 +86,7 @@ fun MiniPlayerBar(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(40.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .clip(RoundedCornerShape(6.dp)),
                     )
                 } else {
