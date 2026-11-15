@@ -211,10 +211,22 @@ fun PlayerScreen(
                             if (dragged > dismissThresholdPx ||
                                 flingVelocity > DISMISS_FLING_VELOCITY_PX_PER_SECOND
                             ) {
-                                dismissOffset.animateTo(pageHeightPx.toFloat(), spring())
+                                // Carry the finger's velocity into the
+                                // settle animation: starting from rest
+                                // makes the page visibly stop before it
+                                // slides off.
+                                dismissOffset.animateTo(
+                                    pageHeightPx.toFloat(),
+                                    spring(),
+                                    initialVelocity = flingVelocity,
+                                )
                                 currentOnClose()
                             } else {
-                                dismissOffset.animateTo(0f, spring())
+                                dismissOffset.animateTo(
+                                    0f,
+                                    spring(),
+                                    initialVelocity = flingVelocity,
+                                )
                             }
                         }
                     },
