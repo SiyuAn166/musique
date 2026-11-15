@@ -1,20 +1,29 @@
 package com.siyu.musique.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -193,44 +202,66 @@ fun MusiqueApp(
                 }
 
                 if (showTabs) {
-                    NavigationBar {
+                    // A hand-rolled tab row instead of
+                    // NavigationBar: the Material bar is 80dp
+                    // tall, which eats too much of the screen.
+                    // This one is 56dp with the same icons,
+                    // labels, background, and selection tints.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(TAB_BAR_HEIGHT_DP.dp)
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .selectableGroup(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         TAB_ITEMS.forEach { item ->
-                            NavigationBarItem(
-                                selected = currentRoute == item.route,
-                                onClick = {
-                                    navController.navigate(item.route) {
-                                        // One copy of each tab, with
-                                        // its state saved and
-                                        // restored: the search text
-                                        // and results survive
-                                        // switching away and back.
-                                        popUpTo(navController.graph.startDestinationId) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = item.label,
+                            val selected = currentRoute == item.route
+                            val tabTint = if (selected) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .selectable(
+                                        selected = selected,
+                                        onClick = {
+                                            navController.navigate(item.route) {
+                                                // One copy of each
+                                                // tab, with its state
+                                                // saved and restored:
+                                                // the search text and
+                                                // results survive
+                                                // switching away and
+                                                // back.
+                                                popUpTo(navController.graph.startDestinationId) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        },
+                                        role = Role.Tab,
                                     )
-                                },
-                                label = { Text(item.label) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    // No pill indicator: the tint
-                                    // change alone marks the
-                                    // selected tab, black on grey.
-                                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    unselectedIconColor =
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor =
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                    indicatorColor = Color.Transparent,
-                                ),
-                            )
+                                    .padding(vertical = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.label,
+                                    tint = tabTint,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = item.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = tabTint,
+                                )
+                            }
                         }
                     }
                 }
@@ -238,6 +269,9 @@ fun MusiqueApp(
         }
     }
 }
+
+/** The height of the bottom tab row: shorter than the 80dp Material default. */
+private const val TAB_BAR_HEIGHT_DP: Int = 56
 
 /** One bottom tab: its route, label, and icon. */
 private data class TabItem(val route: String, val label: String, val icon: ImageVector)
