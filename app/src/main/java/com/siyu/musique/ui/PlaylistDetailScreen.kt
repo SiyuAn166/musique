@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.model.Track
 import com.siyu.musique.ui.theme.MusiqueIcons
 
 /**
@@ -58,6 +59,7 @@ fun PlaylistDetailScreen(
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val downloadRecords by viewModel.downloadRecords.collectAsStateWithLifecycle()
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
+    val videoParts by viewModel.videoParts.collectAsStateWithLifecycle()
 
     val playlist = playlists.firstOrNull { it.id == playlistId }
 
@@ -66,6 +68,9 @@ fun PlaylistDetailScreen(
 
     /** Keys of the songs checked for removal, or empty when nothing is selected. */
     var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    /** Bvids whose parts are expanded in the list. Expansion hides while selecting. */
+    var expandedVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     Column(
         modifier = modifier
@@ -193,53 +198,126 @@ fun PlaylistDetailScreen(
                     )
                 }
             } else {
+                // Flattened rows: each entry, plus its parts right
+                // under it when expanded and known to have more
+                // than one. Selection mode shows entries only:
+                // removal works on whole entries, never on parts.
+                val rows = remember(playlist.tracks, videoParts, expandedVideoIds, selecting) {
+                    buildList {
+                        playlist.tracks.forEach { track ->
+                            add(DetailListRow.Video(track))
+                            val parts = videoParts[track.id]
+                            if (!selecting && track.id in expandedVideoIds &&
+                                parts != null && parts.size > 1
+                            ) {
+                                parts.forEach { add(DetailListRow.Part(it)) }
+                            }
+                        }
+                    }
+                }
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     itemsIndexed(
-                        playlist.tracks,
-                        key = { _, track -> track.key },
-                    ) { index, track ->
-                        SongRow(
-                            track = track,
-                            // Rows are videos: match by bvid, since the
-                            // row's cid may still be empty while the
-                            // playing track's cid was filled by details.
-                            isCurrent = track.id == currentTrack?.id,
-                            onClick = {
-                                if (selecting) {
-                                    selectedKeys = if (track.key in selectedKeys) {
-                                        selectedKeys - track.key
-                                    } else {
-                                        selectedKeys + track.key
-                                    }
-                                } else {
-                                    viewModel.playFromPlaylist(track, playlist)
-                                }
-                            },
-                            trailing = {
-                                if (selecting) {
-                                    Checkbox(
-                                        checked = track.key in selectedKeys,
-                                        onCheckedChange = { checked ->
-                                            selectedKeys = if (checked) {
-                                                selectedKeys + track.key
-                                            } else {
+                        rows,
+                        key = { _, row -> row.key },
+                    ) { index, listRow ->
+                        when (listRow) {
+                            is DetailListRow.Video -> {
+                                val track = listRow.track
+                                val parts = videoParts[track.id]
+                                val expanded = track.id in expandedVideoIds
+                                SongRow(
+                                    track = track,
+                                    // Rows are videos: match by bvid, since the
+                                    // row's cid may still be empty while the
+                                    // playing track's cid was filled by details.
+                                    isCurrent = track.id == currentTrack?.id,
+                                    onClick = {
+                                        if (selecting) {
+                                            selectedKeys = if (track.key in selectedKeys) {
                                                 selectedKeys - track.key
+                                            } else {
+                                                selectedKeys + track.key
                                             }
-                                        },
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = MaterialTheme.colorScheme.onSurface,
-                                            uncheckedColor =
-                                                MaterialTheme.colorScheme.onSurfaceVariant,
-                                            checkmarkColor = MaterialTheme.colorScheme.surface,
-                                        ),
-                                    )
-                                }
-                            },
-                        )
-                        if (index < playlist.tracks.lastIndex) {
+                                        } else {
+                                            viewModel.playFromPlaylist(track, playlist)
+                                        }
+                                    },
+                                    trailing = {
+                                        if (selecting) {
+                                            Checkbox(
+                                                checked = track.key in selectedKeys,
+                                                onCheckedChange = { checked ->
+                                                    selectedKeys = if (checked) {
+                                                        selectedKeys + track.key
+                                                    } else {
+                                                        selectedKeys - track.key
+                                                    }
+                                                },
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = MaterialTheme.colorScheme.onSurface,
+                                                    uncheckedColor =
+                                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    checkmarkColor = MaterialTheme.colorScheme.surface,
+                                                ),
+                                            )
+                                        } else if (parts == null || parts.size > 1) {
+                                            // The chevron shows until the entry
+                                            // is known to have a single part;
+                                            // tapping it loads the parts on
+                                            // first use and toggles the rows.
+                                            IconButton(onClick = {
+                                                viewModel.loadVideoParts(track)
+                                                expandedVideoIds = if (expanded) {
+                                                    expandedVideoIds - track.id
+                                                } else {
+                                                    expandedVideoIds + track.id
+                                                }
+                                            }) {
+                                                Icon(
+                                                    imageVector = if (expanded) {
+                                                        MusiqueIcons.ChevronDown
+                                                    } else {
+                                                        MusiqueIcons.ChevronRight
+                                                    },
+                                                    contentDescription = if (expanded) {
+                                                        "Collapse parts"
+                                                    } else {
+                                                        "Expand parts"
+                                                    },
+                                                    tint = MaterialTheme.colorScheme
+                                                        .onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                            is DetailListRow.Part -> {
+                                // A single part: tapping plays it with
+                                // the playlist as the queue.
+                                SongRow(
+                                    track = listRow.track,
+                                    isCurrent = listRow.track.key == currentTrack?.key,
+                                    onClick = {
+                                        viewModel.playFromPlaylist(listRow.track, playlist)
+                                    },
+                                    trailing = {},
+                                    modifier = Modifier.padding(
+                                        start = PART_ROW_INDENT_DP.dp,
+                                    ),
+                                    compact = true,
+                                )
+                            }
+                        }
+                        if (index < rows.lastIndex) {
+                            val dividerStartDp = if (listRow is DetailListRow.Part) {
+                                PART_ROW_DIVIDER_START_DP
+                            } else {
+                                SONG_ROW_DIVIDER_START_DP
+                            }
                             HorizontalDivider(
                                 modifier = Modifier.padding(
-                                    start = SONG_ROW_DIVIDER_START_DP.dp,
+                                    start = dividerStartDp.dp,
                                 ),
                                 color = MaterialTheme.colorScheme.outlineVariant,
                             )
@@ -248,5 +326,23 @@ fun PlaylistDetailScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * One row of the playlist detail's flattened list: an entry, or
+ * one of an expanded entry's parts. Part keys are prefixed so a
+ * part row never collides with an entry row's key.
+ */
+private sealed interface DetailListRow {
+    val track: Track
+    val key: String
+
+    data class Video(override val track: Track) : DetailListRow {
+        override val key: String get() = track.key
+    }
+
+    data class Part(override val track: Track) : DetailListRow {
+        override val key: String get() = "part:${track.key}"
     }
 }

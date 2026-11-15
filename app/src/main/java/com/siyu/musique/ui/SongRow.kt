@@ -44,6 +44,13 @@ internal const val SONG_ROW_COVER_GAP_DP: Int = 12
 internal const val SONG_ROW_DIVIDER_START_DP: Int =
     SONG_ROW_HORIZONTAL_PADDING_DP + SONG_ROW_COVER_SIZE_DP + SONG_ROW_COVER_GAP_DP
 
+/** Extra start padding for part rows nested under their video, in the queue sheet and the expandable lists. */
+internal const val PART_ROW_INDENT_DP: Int = 32
+
+/** The hairline divider inset after a part row: the indent plus the row's own start padding, so dividers start at the part text. */
+internal const val PART_ROW_DIVIDER_START_DP: Int =
+    PART_ROW_INDENT_DP + SONG_ROW_HORIZONTAL_PADDING_DP
+
 /**
  * One flat song row, shared by the search results, the playlist
  * detail screen, and the queue sheet: a small square cover with

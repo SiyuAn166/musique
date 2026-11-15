@@ -104,6 +104,10 @@ fun SearchScreen(
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val videoParts by viewModel.videoParts.collectAsStateWithLifecycle()
+
+    /** Bvids whose parts are expanded in the results list. */
+    var expandedVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var queryField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
@@ -323,31 +327,115 @@ fun SearchScreen(
                             if (nearEnd) viewModel.loadMore()
                         }
                 }
+                // Flattened rows: each video, plus its parts right
+                // under it when expanded and known to have more
+                // than one. A video's parts load on the first
+                // expand tap and stay cached.
+                val rows = remember(state.tracks, videoParts, expandedVideoIds) {
+                    buildList {
+                        state.tracks.forEach { track ->
+                            add(SearchListRow.Video(track))
+                            val parts = videoParts[track.id]
+                            if (track.id in expandedVideoIds &&
+                                parts != null && parts.size > 1
+                            ) {
+                                parts.forEach { add(SearchListRow.Part(it)) }
+                            }
+                        }
+                    }
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f),
                 ) {
-                    itemsIndexed(state.tracks, key = { _, track -> track.key }) { index, track ->
-                        SongRow(
-                            track = track,
-                            // Rows are videos: stay highlighted while any
-                            // part of the video plays, not just part one.
-                            isCurrent = track.id == currentTrack?.id,
-                            onClick = { viewModel.play(track) },
-                            trailing = {
-                                IconButton(onClick = { chooserTrack = track }) {
-                                    Icon(
-                                        imageVector = MusiqueIcons.Add,
-                                        contentDescription = "Add to playlist",
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                }
-                            },
-                        )
-                        if (index < state.tracks.lastIndex) {
+                    itemsIndexed(rows, key = { _, row -> row.key }) { index, listRow ->
+                        when (listRow) {
+                            is SearchListRow.Video -> {
+                                val track = listRow.track
+                                val parts = videoParts[track.id]
+                                val expanded = track.id in expandedVideoIds
+                                SongRow(
+                                    track = track,
+                                    // Rows are videos: stay highlighted while any
+                                    // part of the video plays, not just part one.
+                                    isCurrent = track.id == currentTrack?.id,
+                                    onClick = { viewModel.play(track) },
+                                    trailing = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            // The chevron shows until the video
+                                            // is known to have a single part;
+                                            // tapping it loads the parts on
+                                            // first use and toggles the rows.
+                                            if (parts == null || parts.size > 1) {
+                                                IconButton(onClick = {
+                                                    viewModel.loadVideoParts(track)
+                                                    expandedVideoIds = if (expanded) {
+                                                        expandedVideoIds - track.id
+                                                    } else {
+                                                        expandedVideoIds + track.id
+                                                    }
+                                                }) {
+                                                    Icon(
+                                                        imageVector = if (expanded) {
+                                                            MusiqueIcons.ChevronDown
+                                                        } else {
+                                                            MusiqueIcons.ChevronRight
+                                                        },
+                                                        contentDescription = if (expanded) {
+                                                            "Collapse parts"
+                                                        } else {
+                                                            "Expand parts"
+                                                        },
+                                                        tint = MaterialTheme.colorScheme
+                                                            .onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                            IconButton(onClick = { chooserTrack = track }) {
+                                                Icon(
+                                                    imageVector = MusiqueIcons.Add,
+                                                    contentDescription = "Add to playlist",
+                                                    tint = MaterialTheme.colorScheme.onSurface,
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                            is SearchListRow.Part -> {
+                                // A single part: tapping plays it, the
+                                // add button adds just this part.
+                                SongRow(
+                                    track = listRow.track,
+                                    isCurrent = listRow.track.key == currentTrack?.key,
+                                    onClick = { viewModel.play(listRow.track) },
+                                    trailing = {
+                                        IconButton(onClick = { chooserTrack = listRow.track }) {
+                                            Icon(
+                                                imageVector = MusiqueIcons.Add,
+                                                contentDescription = "Add to playlist",
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.padding(
+                                        start = PART_ROW_INDENT_DP.dp,
+                                    ),
+                                    compact = true,
+                                )
+                            }
+                        }
+                        if (index < rows.lastIndex) {
+                            val dividerStartDp = if (listRow is SearchListRow.Part) {
+                                PART_ROW_DIVIDER_START_DP
+                            } else {
+                                SONG_ROW_DIVIDER_START_DP
+                            }
                             HorizontalDivider(
                                 modifier = Modifier.padding(
-                                    start = SONG_ROW_DIVIDER_START_DP.dp,
+                                    start = dividerStartDp.dp,
                                 ),
                                 color = MaterialTheme.colorScheme.outlineVariant,
                             )
@@ -523,5 +611,23 @@ private fun sanitizeFieldValue(value: TextFieldValue): TextFieldValue {
         value
     } else {
         value.copy(selection = selection, composition = composition)
+    }
+}
+
+/**
+ * One row of the search results' flattened list: a video, or one
+ * of an expanded video's parts. Part keys are prefixed so a part
+ * row never collides with a video row's key.
+ */
+private sealed interface SearchListRow {
+    val track: Track
+    val key: String
+
+    data class Video(override val track: Track) : SearchListRow {
+        override val key: String get() = track.key
+    }
+
+    data class Part(override val track: Track) : SearchListRow {
+        override val key: String get() = "part:${track.key}"
     }
 }

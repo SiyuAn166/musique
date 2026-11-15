@@ -646,7 +646,7 @@ fun PlayerScreen(
                                 },
                                 trailing = {},
                                 modifier = Modifier.padding(
-                                    start = QUEUE_PART_INDENT_DP.dp,
+                                    start = PART_ROW_INDENT_DP.dp,
                                 ),
                                 compact = true,
                             )
@@ -658,7 +658,7 @@ fun PlayerScreen(
                             // padding. A video row keeps the
                             // cover-aligned inset.
                             val dividerStartDp = if (sheetRow is QueueSheetRow.Part) {
-                                QUEUE_PART_INDENT_DP + SONG_ROW_HORIZONTAL_PADDING_DP
+                                PART_ROW_DIVIDER_START_DP
                             } else {
                                 SONG_ROW_DIVIDER_START_DP
                             }
@@ -699,9 +699,6 @@ private fun ModeButton(
         )
     }
 }
-
-/** Extra start padding for part rows nested under their video in the queue sheet. */
-private const val QUEUE_PART_INDENT_DP: Int = 32
 
 /**
  * One row of the queue sheet's flattened tree: a queue video, or

@@ -367,10 +367,10 @@ class PlaylistViewModelTest {
         }
 
     @Test
-    fun `loading dedupes songs already stored twice and persists the cleaned list`() =
+    fun `loading dedupes exact duplicate entries and persists the cleaned list`() =
         runTest(testDispatcher) {
             val first = track("BV1DUP00004", cid = "")
-            val second = track("BV1DUP00004", cid = "28139389900")
+            val second = track("BV1DUP00004", cid = "")
             val kept = track("BV1DUP00005", cid = "1")
             val stored = Playlist(Playlist.DEFAULT_ID, Playlist.DEFAULT_NAME, listOf(first, kept, second))
             val store = InMemoryPlaylistStore(listOf(stored))
@@ -378,6 +378,25 @@ class PlaylistViewModelTest {
             advanceUntilIdle()
             assertEquals(listOf(first, kept), vm.playlists.value.first { it.isDefault }.tracks)
             assertEquals(vm.playlists.value.filterNot { it.isDownloads }, store.load())
+        }
+
+    @Test
+    fun `loading keeps a stored collection and a stored part of the same video`() =
+        runTest(testDispatcher) {
+            val collection = track("BV1DUP00006", cid = "")
+            val part = track("BV1DUP00006", cid = "28139389900")
+            val stored = Playlist(
+                Playlist.DEFAULT_ID,
+                Playlist.DEFAULT_NAME,
+                listOf(collection, part),
+            )
+            val store = InMemoryPlaylistStore(listOf(stored))
+            val vm = viewModel(store = store)
+            advanceUntilIdle()
+            assertEquals(
+                listOf(collection, part),
+                vm.playlists.value.first { it.isDefault }.tracks,
+            )
         }
 
     @Test

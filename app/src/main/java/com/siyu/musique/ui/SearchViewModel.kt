@@ -335,6 +335,44 @@ class SearchViewModel(
     private val _currentParts = MutableStateFlow<List<Track>>(emptyList())
     val currentParts: StateFlow<List<Track>> = _currentParts.asStateFlow()
 
+    /**
+     * Parts learned for videos expanded in the search results or
+     * a playlist, keyed by bvid. Separate from [_currentParts],
+     * which only ever holds the playing video's parts: list
+     * expansion must work for any video, playing or not, and the
+     * entries stay cached for the session so expanding the same
+     * video twice never refetches. A failed load caches nothing,
+     * so the next expand tap retries.
+     */
+    private val _videoParts = MutableStateFlow<Map<String, List<Track>>>(emptyMap())
+    val videoParts: StateFlow<Map<String, List<Track>>> = _videoParts.asStateFlow()
+
+    /** Video ids whose parts are loading right now, so an expand tap never fires twice. */
+    private val partsLoading = mutableSetOf<String>()
+
+    /**
+     * Loads [video]'s parts into [videoParts] for list expansion.
+     * A no-op when the parts are already known or a load is in
+     * flight. A failure only logs: the row stays unexpanded and
+     * the next tap retries.
+     */
+    fun loadVideoParts(video: Track) {
+        if (_videoParts.value.containsKey(video.id) || video.id in partsLoading) return
+        partsLoading += video.id
+        viewModelScope.launch {
+            try {
+                val detailed = repository.fetchDetail(video)
+                _videoParts.value = _videoParts.value + (video.id to detailed.parts)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e(TAG, "parts load failed bvid=${video.id} ${describeError(e)}")
+            } finally {
+                partsLoading -= video.id
+            }
+        }
+    }
+
     /** The video id [currentParts] belongs to, or null while the parts are unknown. */
     private var partsKnownForVideoId: String? = null
 
@@ -460,7 +498,7 @@ class SearchViewModel(
             // learned that an empty cid matches any part): keep the
             // first entry of each song.
             val deduped = lists.map { playlist ->
-                playlist.copy(tracks = playlist.tracks.deduplicatedBySong())
+                playlist.copy(tracks = playlist.tracks.deduplicatedByKey())
             }
             _playlists.value = deduped
             // A successful load that came back empty (or without the
@@ -1315,11 +1353,26 @@ class SearchViewModel(
     }
 
     /**
-     * Adds [track] to the playlist with [playlistId], at the end.
-     * Adding a track already present (same bvid:cid) is a no-op and
-     * is logged. The stored copy never carries a play URL. An
-     * unknown playlist id is a no-op.
+     * Whether [candidate] duplicates [existing] as a playlist
+     * entry. Same bvid with the same cid (both empty included) is
+     * the same entry, and different parts of one video are
+     * different entries. The mixed case, one side with an empty
+     * cid (the whole collection) and the other naming a part,
+     * duplicates only while the video is not known to have
+     * parts: a collection added before its cid was filled in and
+     * the same video added after must still count as one song,
+     * but once the parts are known (the user expanded the video)
+     * a part is its own entry, separate from the collection, so
+     * both can sit in one playlist.
      */
+    private fun isDuplicatePlaylistEntry(existing: Track, candidate: Track): Boolean {
+        if (existing.id != candidate.id) return false
+        if (existing.cid == candidate.cid) return true
+        if (existing.cid.isNotEmpty() && candidate.cid.isNotEmpty()) return false
+        val parts = _videoParts.value[candidate.id]
+        return parts == null || parts.size <= 1
+    }
+
     /**
      * Adds [track] to one playlist (stored without its play URL).
      * Returns true when the track was actually added, false when it
@@ -1335,7 +1388,7 @@ class SearchViewModel(
         }
         val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return false
         val stored = track.copy(playUrl = "")
-        if (target.tracks.any { it.isSameSongAs(stored) }) {
+        if (target.tracks.any { isDuplicatePlaylistEntry(it, stored) }) {
             logger.i(
                 TAG,
                 "playlist add skipped: already present bvid=${track.id} cid=${track.cid} " +
@@ -1795,11 +1848,11 @@ fun cacheKey(track: Track, qualityId: Int): String = "${track.id}:${track.cid}:$
 /** Download progress map key for one (track, quality) pair: the track key plus the stream id. */
 private fun downloadProgressKey(trackKey: String, qualityId: Int): String = "$trackKey:$qualityId"
 
-/** Drops later entries that are the same song as an earlier one, keeping the first of each. */
-private fun List<Track>.deduplicatedBySong(): List<Track> {
+/** Drops later entries with a key (bvid:cid) already kept, keeping the first of each. A stored collection (empty cid) and a stored part of the same video have different keys and both survive: they are distinct entries. */
+private fun List<Track>.deduplicatedByKey(): List<Track> {
     val kept = mutableListOf<Track>()
     for (track in this) {
-        if (kept.none { it.isSameSongAs(track) }) kept.add(track)
+        if (kept.none { it.key == track.key }) kept.add(track)
     }
     return kept
 }
