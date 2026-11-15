@@ -24,6 +24,10 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          # Full history: the release step lists the commits
+          # since the previous tag for the release notes.
+          fetch-depth: 0
 
       - name: Set up JDK 17 (Temurin)
         uses: actions/setup-java@v4
@@ -72,14 +76,21 @@ jobs:
           retention-days: 30
 
       # Versioned releases: pushing a v* tag publishes a release for
-      # that tag with generated notes. version.json rides along so
-      # the in-app update check can compare versionCodes: it carries
-      # this run's number, the same number Gradle baked into the APK
-      # as versionCode, plus the tag name for the update dialog.
+      # that tag. The notes are a plain list of the commit subjects
+      # since the previous tag: just what changed, no author
+      # mentions and no contributors section (the generated-notes
+      # default tags the account, which is not wanted). version.json
+      # rides along so the in-app update check can compare
+      # versionCodes: it carries this run's number, the same number
+      # Gradle baked into the APK as versionCode, plus the tag name
+      # for the update dialog.
       - name: Publish versioned release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           printf '{"versionCode": %s, "tag": "%s"}' "$GITHUB_RUN_NUMBER" "$GITHUB_REF_NAME" > version.json
-          gh release create "$GITHUB_REF_NAME" --title "Musique $GITHUB_REF_NAME" --generate-notes musique.apk version.json
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; else RANGE="HEAD"; fi
+          git log "$RANGE" --pretty=format:"- %s" --reverse > changes.txt
+          gh release create "$GITHUB_REF_NAME" --title "Musique $GITHUB_REF_NAME" --notes-file changes.txt musique.apk version.json
