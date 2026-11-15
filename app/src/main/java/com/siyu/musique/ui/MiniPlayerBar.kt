@@ -19,18 +19,28 @@ import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
 
 /**
- * Mini player bar (Step 0 placeholder). Tapping the bar opens the
- * player page; the button toggles the fake play/pause state.
- * Real progress, seek, and audio arrive in Steps 3-4.
+ * Mini player bar (Step 3). Tapping the bar opens the player page;
+ * the button toggles real play/pause, and shows Retry while the
+ * player is in the error state. The second line names the player
+ * state while loading, paused, or failed; otherwise it shows the
+ * artist and duration. Real progress and seek arrive in Step 4.
  */
 @Composable
 fun MiniPlayerBar(
     track: Track,
     isPlaying: Boolean,
+    playerState: PlayerUiState,
     onTogglePlayPause: () -> Unit,
+    onRetry: () -> Unit,
     onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val statusLine = when (playerState) {
+        PlayerUiState.Fetching, PlayerUiState.Buffering -> "Loading…"
+        PlayerUiState.Paused -> "Paused"
+        is PlayerUiState.Error -> "Playback error"
+        else -> "${track.artist} · ${formatDuration(track.duration)}"
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -49,15 +59,21 @@ fun MiniPlayerBar(
                     maxLines = 1,
                 )
                 Text(
-                    text = "${track.artist} · ${formatDuration(track.duration)}",
+                    text = statusLine,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            TextButton(onClick = onTogglePlayPause) {
-                Text(if (isPlaying) "Pause" else "Play")
+            if (playerState is PlayerUiState.Error) {
+                TextButton(onClick = onRetry) {
+                    Text("Retry")
+                }
+            } else {
+                TextButton(onClick = onTogglePlayPause) {
+                    Text(if (isPlaying) "Pause" else "Play")
+                }
             }
         }
     }

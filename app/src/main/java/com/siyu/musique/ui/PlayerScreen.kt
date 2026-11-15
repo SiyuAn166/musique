@@ -21,11 +21,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.model.formatDuration
 
 /**
- * Player page (Step 0 placeholder). Shows the current track and the
- * play/pause, previous, and next controls wired to the same
- * ViewModel as the search screen. There is no sound yet (Step 3)
- * and no seekable progress yet (Step 4); the progress line is a
- * static placeholder.
+ * Player page (Step 3). Shows the current track and the play/pause,
+ * previous, and next controls wired to the same ViewModel as the
+ * search screen, driving real ExoPlayer playback. Player errors show
+ * their message with a Retry button. There is no seekable progress
+ * yet (Step 4); the progress line is a static placeholder.
  */
 @Composable
 fun PlayerScreen(
@@ -35,6 +35,7 @@ fun PlayerScreen(
 ) {
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val track = currentTrack
 
     Column(
@@ -72,6 +73,19 @@ fun PlayerScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val errorState = playerState as? PlayerUiState.Error
+            if (errorState != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = errorState.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { viewModel.retryPlayback() }) {
+                    Text("Retry")
+                }
+            }
             Spacer(modifier = Modifier.height(32.dp))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
