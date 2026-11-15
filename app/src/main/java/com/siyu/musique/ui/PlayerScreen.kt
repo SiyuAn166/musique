@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -119,7 +118,7 @@ fun PlayerScreen(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
         if (track == null) {
             Text(
                 text = "Nothing playing yet. Go back and tap a track.",
@@ -149,7 +148,7 @@ fun PlayerScreen(
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 )
             }
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = track.title,
                 style = MaterialTheme.typography.headlineMedium,
@@ -165,7 +164,7 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 1,
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             val durationMs = progress.durationMs.coerceAtLeast(1L)
             val shownPositionMs = (dragPositionMs ?: progress.positionMs)
@@ -217,7 +216,7 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(32.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -260,34 +259,43 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = MusiqueIcons.VolumeDown,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+                // The end icons are buttons: tap for mute / full volume.
+                IconButton(
+                    onClick = { viewModel.setVolume(0f) },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.VolumeDown,
+                        contentDescription = "Mute",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
                 SlimSlider(
                     value = volume,
                     onValueChange = { viewModel.setVolume(it) },
                     valueRange = 0f..1f,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = MusiqueIcons.VolumeUp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
+                IconButton(
+                    onClick = { viewModel.setVolume(1f) },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.VolumeUp,
+                        contentDescription = "Maximum volume",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -295,8 +303,9 @@ fun PlayerScreen(
                 Box {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 2.dp,
+                        // Flat light grey, like the mockup: tonal
+                        // elevation tints the chip pink instead.
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.clickable { qualityMenuExpanded = true },
                     ) {
                         Row(
