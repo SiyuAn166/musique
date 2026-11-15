@@ -32,11 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import android.os.SystemClock
-import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -79,10 +79,11 @@ import java.io.File
  * screen, "playlists" lists the playlists (unreachable since
  * the home tab shows them inline, kept for now), and
  * "playlist/{id}" is one playlist's detail screen. The player
- * page is not a destination: it is a full-screen overlay above
+ * page is not a destination: it is a full-screen dialog above
  * the shell, so the tab destination stays composed underneath
  * and shows through while the player slides down on dismiss.
- * The ViewModel is shared between the screens and is built with
+ * The dialog window blocks touches to the shell, so the player
+ * needs no touch barrier of its own. The ViewModel is shared between the screens and is built with
  * the repository, player engine, and stores the Activity hands
  * in. Playlist ids are UUIDs or "default" (or "downloads" for
  * the synthetic playlist), so they are safe to carry in a route.
@@ -91,9 +92,11 @@ import java.io.File
  * bar, below the NavHost: the tab bar shows only on the three
  * tab destinations, and the mini bar shows on the tab
  * destinations, the playlist detail, and the playlists screen,
- * but never on the log screen. While the player overlay is open
- * both bars sit underneath it, covered. No Scaffold: the
- * screens pad themselves for the safe drawing insets.
+ * but never on the log screen. Both bars hide while the player
+ * sits at rest, so nothing shows through its translucent
+ * background, and reappear for the dismiss drag, so the reveal
+ * shows the whole page. No Scaffold: the screens pad
+ * themselves for the safe drawing insets.
  */
 @Composable
 fun MusiqueApp(
@@ -135,15 +138,27 @@ fun MusiqueApp(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showTabs = currentRoute in TAB_ROUTES
-    val showMiniBar = showTabs ||
-        currentRoute == "playlists" ||
-        currentRoute == "playlist/{playlistId}"
 
-    // Whether the player overlay is open. Plain UI state: it
+    // Whether the player dialog is open. Plain UI state: it
     // need not survive process death, the mini bar reopens the
     // player.
     var playerOpen by remember { mutableStateOf(false) }
+
+    // Whether the player is mid dismiss drag. The bars hide
+    // while the player sits at rest and show while it moves,
+    // so the reveal shows the whole page and nothing ghosts
+    // through the translucent panel.
+    var playerDragging by remember { mutableStateOf(false) }
+
+    val closePlayer = {
+        playerOpen = false
+        playerDragging = false
+    }
+
+    val showTabs = currentRoute in TAB_ROUTES && (!playerOpen || playerDragging)
+    val showMiniBar = (showTabs ||
+        currentRoute == "playlists" ||
+        currentRoute == "playlist/{playlistId}") && (!playerOpen || playerDragging)
 
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
@@ -169,11 +184,6 @@ fun MusiqueApp(
         }
         wasImeVisible = imeVisible
     }
-
-    // Back closes the player overlay instead of popping the nav
-    // stack. The chevron button closes instantly too, with no
-    // animation, like every other page switch.
-    BackHandler(enabled = playerOpen) { playerOpen = false }
 
     MusiqueTheme {
         // The Surface paints the white background: without it the
@@ -338,31 +348,31 @@ fun MusiqueApp(
                         }
                     }
                 }
-                // The player is a full-screen overlay above the
+                // The player is a full-screen dialog above the
                 // shell, not a navigation destination: the tab
                 // destination stays composed underneath, so
                 // dragging the player down reveals it instead of
-                // a blank background. Opening and the chevron
-                // close cut instantly, like every other page
-                // switch; only the drag dismiss animates. The
-                // overlay also swallows taps on empty areas of
-                // the player, so they never reach the mini bar
-                // and tab bar underneath.
+                // a blank background. The dialog window is
+                // transparent with no dim, and it blocks touches
+                // to the shell on its own. Back closes the player
+                // through the dialog; the chevron button closes
+                // instantly too, with no animation, like every
+                // other page switch. Only the drag dismiss
+                // animates.
                 if (playerOpen) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        awaitPointerEvent().changes.forEach { it.consume() }
-                                    }
-                                }
-                            },
+                    Dialog(
+                        onDismissRequest = closePlayer,
+                        properties = DialogProperties(
+                            dismissOnBackPress = true,
+                            dismissOnClickOutside = false,
+                            usePlatformDefaultWidth = false,
+                            decorFitsSystemWindows = false,
+                        ),
                     ) {
                         PlayerScreen(
                             viewModel = viewModel,
-                            onClose = { playerOpen = false },
+                            onClose = closePlayer,
+                            onDraggingChanged = { playerDragging = it },
                         )
                     }
                 }

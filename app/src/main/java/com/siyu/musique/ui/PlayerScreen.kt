@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +68,7 @@ import com.siyu.musique.model.formatDuration
 import com.siyu.musique.model.formatRemaining
 import com.siyu.musique.ui.theme.MusiqueIcons
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** A downward release faster than this dismisses the page even before the drag threshold. */
@@ -109,13 +111,17 @@ private const val PLAYER_TOP_CORNER_DP: Int = 36
  * slide down with the page during the dismiss drag so the tab
  * content shows through behind it. The background is slightly
  * translucent with large rounded top corners, so the player
- * reads as a floating sheet above the tabs.
+ * reads as a floating sheet above the tabs. [onDraggingChanged]
+ * reports whether the page is currently moved down from rest,
+ * so the shell can show its bars for the reveal and hide them
+ * while the player sits still.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     viewModel: SearchViewModel,
     onClose: () -> Unit,
+    onDraggingChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
@@ -157,6 +163,15 @@ fun PlayerScreen(
      * settles back to rest or slides off the bottom.
      */
     val dismissOffset = remember { Animatable(0f) }
+
+    // Report whether the page is moved down from rest, so the
+    // shell knows when to show its bars for the reveal. The
+    // flow only fires when the answer changes.
+    LaunchedEffect(dismissOffset) {
+        snapshotFlow { dismissOffset.value > 0f }
+            .distinctUntilChanged()
+            .collect { onDraggingChanged(it) }
+    }
 
     /** Runs the offset snaps and settle animations from the drag callbacks. */
     val dismissScope = rememberCoroutineScope()
