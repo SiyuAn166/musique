@@ -38,10 +38,10 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Slim floating mini player bar: a white card with a small square
- * cover, title/artist, previous/play-pause/next icon buttons, and
- * a thin progress hairline along the bottom edge driven by
- * [progress]. A resolved quality label ("192K", "Hi-Res") shows as
+ * Slim floating mini player bar: a translucent white card with
+ * large rounded corners, a small square cover, title/artist,
+ * previous/play-pause/next icon buttons, and a thin progress
+ * hairline along the bottom edge driven by [progress]. A resolved quality label ("192K", "Hi-Res") shows as
  * a small black badge before the title when [qualityLabel] is not
  * null. Tapping the bar (not the buttons) opens the player page;
  * the error state shows a retry icon button instead of the
@@ -89,8 +89,8 @@ fun MiniPlayerBar(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.9f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
     ) {
         Column {
