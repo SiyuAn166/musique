@@ -4,6 +4,7 @@ import com.siyu.musique.core.logging.LogRedactor
 import com.siyu.musique.core.logging.MusiqueLog
 import com.siyu.musique.core.logging.MusiqueLogger
 import com.siyu.musique.core.network.ApiService
+import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
 import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliBootstrap
@@ -155,12 +156,12 @@ class BiliSearchRepository(
         }
     }
 
-    override suspend fun fetchPlayUrl(track: Track): AudioStream {
+    override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream {
         if (track.cid.isEmpty()) {
             throw BiliParseException("Cannot resolve a play URL without a cid for ${track.id}")
         }
         try {
-            val stream = apiService.fetchPlayUrl(track.id, track.cid)
+            val stream = apiService.fetchPlayUrl(track.id, track.cid, preference)
             logger.i(
                 TAG,
                 "playurl bvid=${track.id} cid=${track.cid} " +

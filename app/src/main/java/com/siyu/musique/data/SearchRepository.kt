@@ -1,5 +1,6 @@
 package com.siyu.musique.data
 
+import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
 import com.siyu.musique.core.network.BiliParseException
 import com.siyu.musique.model.Track
@@ -61,12 +62,16 @@ interface SearchRepository {
     /**
      * Resolves the playable DASH audio stream for [track], which must
      * already carry a cid (call [fetchDetail] first when it does
-     * not). The URL is resolved fresh on every call and never cached:
-     * play URLs expire. The default implementation throws, so fakes
-     * that only care about search keep compiling; the production
-     * repository and playback fakes override it.
+     * not), picking by [preference]'s try order. The URL is resolved
+     * fresh on every call and never cached: play URLs expire. The
+     * default implementation throws, so fakes that only care about
+     * search keep compiling; the production repository and playback
+     * fakes override it.
      */
-    suspend fun fetchPlayUrl(track: Track): AudioStream {
+    suspend fun fetchPlayUrl(
+        track: Track,
+        preference: AudioQuality = AudioQuality.BEST,
+    ): AudioStream {
         throw BiliParseException("Play URL resolution is not implemented by this repository")
     }
 }
