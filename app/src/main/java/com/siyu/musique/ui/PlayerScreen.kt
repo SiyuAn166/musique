@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +92,7 @@ fun PlayerScreen(
     val repeatMode by viewModel.repeatMode.collectAsStateWithLifecycle()
     val shuffleEnabled by viewModel.shuffleEnabled.collectAsStateWithLifecycle()
     val queue by viewModel.queue.collectAsStateWithLifecycle()
+    val currentParts by viewModel.currentParts.collectAsStateWithLifecycle()
 
     /** The dragged position while the user holds the slider, or null when not dragging. */
     var dragPositionMs by remember { mutableStateOf<Long?>(null) }
@@ -100,6 +102,13 @@ fun PlayerScreen(
 
     /** Whether the playing queue sheet is open. */
     var queueSheetOpen by remember { mutableStateOf(false) }
+
+    // Opening the sheet learns the current video's parts when
+    // they are still unknown (a track played with its cid
+    // already filled never ran the details call).
+    LaunchedEffect(queueSheetOpen) {
+        if (queueSheetOpen) viewModel.loadPartsForCurrent()
+    }
 
     /** Downward drag past this distance goes back. */
     val dismissThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
@@ -411,6 +420,46 @@ fun PlayerScreen(
                 LazyColumn(
                     modifier = Modifier.padding(bottom = 32.dp),
                 ) {
+                    if (currentParts.size > 1) {
+                        item {
+                            Text(
+                                text = "Parts",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 8.dp,
+                                    bottom = 8.dp,
+                                ),
+                            )
+                        }
+                        itemsIndexed(currentParts, key = { _, part -> part.key }) { index, part ->
+                            SongRow(
+                                track = part,
+                                isCurrent = part.key == track?.key,
+                                onClick = {
+                                    viewModel.playPart(part)
+                                    queueSheetOpen = false
+                                },
+                                trailing = {},
+                            )
+                            if (index < currentParts.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(
+                                        start = SONG_ROW_DIVIDER_START_DP.dp,
+                                    ),
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                )
+                            }
+                        }
+                        item {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                            )
+                        }
+                    }
                     item {
                         Text(
                             text = "Queue",
