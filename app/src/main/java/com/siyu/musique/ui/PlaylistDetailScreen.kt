@@ -35,12 +35,15 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 /**
  * Playlist detail screen: a back chevron, the playlist name as a
  * large title, the song count, and flat song rows like the search
- * rows, each with a checkbox to select it. Tapping a song plays it
- * with the playlist as the queue. While any song is selected, a
+ * rows. Tapping a song plays it with the playlist as the queue.
+ * The multi-select button at the top turns on selection mode:
+ * checkboxes appear on the rows, tapping a row toggles its
+ * checkbox instead of playing, and while any song is selected a
  * minus icon at the top removes all selected songs at once.
- * User-created playlists get a trash icon to delete the whole
- * playlist; the default playlist cannot be deleted. An empty
- * playlist shows a short empty message.
+ * Tapping the button again leaves selection mode and clears the
+ * selection. User-created playlists get a trash icon to delete
+ * the whole playlist; the default playlist cannot be deleted. An
+ * empty playlist shows a short empty message.
  */
 @Composable
 fun PlaylistDetailScreen(
@@ -57,6 +60,9 @@ fun PlaylistDetailScreen(
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
 
     val playlist = playlists.firstOrNull { it.id == playlistId }
+
+    /** Whether selection mode is on: checkboxes show and row taps toggle them. */
+    var selecting by remember { mutableStateOf(false) }
 
     /** Keys of the songs checked for removal, or empty when nothing is selected. */
     var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -80,17 +86,25 @@ fun PlaylistDetailScreen(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            if (playlist != null && selectedKeys.isNotEmpty()) {
+            if (playlist != null && playlist.tracks.isNotEmpty()) {
                 IconButton(
                     onClick = {
-                        viewModel.removeTracksFromPlaylist(playlist.id, selectedKeys)
-                        selectedKeys = emptySet()
+                        selecting = !selecting
+                        if (!selecting) selectedKeys = emptySet()
                     },
                 ) {
                     Icon(
-                        imageVector = MusiqueIcons.Remove,
-                        contentDescription = "Remove selected songs",
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        imageVector = MusiqueIcons.PlaylistAddCheck,
+                        contentDescription = if (selecting) {
+                            "Done selecting"
+                        } else {
+                            "Select songs"
+                        },
+                        tint = if (selecting) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
             }
@@ -104,6 +118,20 @@ fun PlaylistDetailScreen(
                     Icon(
                         imageVector = MusiqueIcons.Delete,
                         contentDescription = "Delete playlist",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+            if (playlist != null && selectedKeys.isNotEmpty()) {
+                IconButton(
+                    onClick = {
+                        viewModel.removeTracksFromPlaylist(playlist.id, selectedKeys)
+                        selectedKeys = emptySet()
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Remove,
+                        contentDescription = "Remove selected songs",
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -163,24 +191,36 @@ fun PlaylistDetailScreen(
                             // row's cid may still be empty while the
                             // playing track's cid was filled by details.
                             isCurrent = track.id == currentTrack?.id,
-                            onClick = { viewModel.playFromPlaylist(track, playlist) },
+                            onClick = {
+                                if (selecting) {
+                                    selectedKeys = if (track.key in selectedKeys) {
+                                        selectedKeys - track.key
+                                    } else {
+                                        selectedKeys + track.key
+                                    }
+                                } else {
+                                    viewModel.playFromPlaylist(track, playlist)
+                                }
+                            },
                             trailing = {
-                                Checkbox(
-                                    checked = track.key in selectedKeys,
-                                    onCheckedChange = { checked ->
-                                        selectedKeys = if (checked) {
-                                            selectedKeys + track.key
-                                        } else {
-                                            selectedKeys - track.key
-                                        }
-                                    },
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = MaterialTheme.colorScheme.onSurface,
-                                        uncheckedColor =
-                                            MaterialTheme.colorScheme.onSurfaceVariant,
-                                        checkmarkColor = MaterialTheme.colorScheme.surface,
-                                    ),
-                                )
+                                if (selecting) {
+                                    Checkbox(
+                                        checked = track.key in selectedKeys,
+                                        onCheckedChange = { checked ->
+                                            selectedKeys = if (checked) {
+                                                selectedKeys + track.key
+                                            } else {
+                                                selectedKeys - track.key
+                                            }
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = MaterialTheme.colorScheme.onSurface,
+                                            uncheckedColor =
+                                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                            checkmarkColor = MaterialTheme.colorScheme.surface,
+                                        ),
+                                    )
+                                }
                             },
                         )
                         if (index < playlist.tracks.lastIndex) {

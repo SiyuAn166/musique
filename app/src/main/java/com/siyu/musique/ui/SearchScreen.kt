@@ -84,7 +84,8 @@ private const val ADD_NOTICE_BOTTOM_OFFSET_DP: Int = 88
  * triggers on the keyboard search action and on tapping the
  * magnifier icon. Typing shows a suggestion dropdown from
  * Bilibili's suggest API under the field; tapping a suggestion
- * searches it. Tapping a row plays it (cid fill + fresh play URL
+ * searches it. Clearing the field returns to the home playlists.
+ * Tapping a row plays it (cid fill + fresh play URL
  * first); the plus icon on a row opens the playlist chooser, and
  * adding shows a short popup notice (a different one when the
  * track is already in the playlist).
@@ -124,6 +125,17 @@ fun SearchScreen(
 
     /** Whether the settings (three-dot) menu is open. Settings and the debug log live inside it. */
     var settingsMenuExpanded by remember { mutableStateOf(false) }
+
+    /**
+     * Applies field text: suggestions follow typing, and clearing
+     * the field returns to the home playlists at once, with no
+     * extra tap on search.
+     */
+    fun updateQuery(newText: String) {
+        query = newText
+        viewModel.onQueryChanged(newText)
+        if (newText.isBlank()) viewModel.search("")
+    }
 
     Column(
         modifier = modifier
@@ -170,10 +182,7 @@ fun SearchScreen(
         Spacer(modifier = Modifier.height(8.dp))
         TextField(
             value = query,
-            onValueChange = {
-                query = it
-                viewModel.onQueryChanged(it)
-            },
+            onValueChange = { updateQuery(it) },
             placeholder = { Text("Search songs") },
             leadingIcon = {
                 IconButton(onClick = { viewModel.search(query) }) {
@@ -186,12 +195,7 @@ fun SearchScreen(
             },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(
-                        onClick = {
-                            query = ""
-                            viewModel.onQueryChanged("")
-                        },
-                    ) {
+                    IconButton(onClick = { updateQuery("") }) {
                         Icon(
                             imageVector = MusiqueIcons.Clear,
                             contentDescription = "Clear search",

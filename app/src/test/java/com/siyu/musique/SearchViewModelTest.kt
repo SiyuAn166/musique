@@ -33,6 +33,20 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun `clearing the search returns home and cancels the in-flight search`() =
+        runTest(testDispatcher) {
+            val viewModel = SearchViewModel(FakeSearchRepository())
+            advanceUntilIdle()
+            viewModel.search("周杰伦")
+            testScheduler.advanceTimeBy(100)
+            testScheduler.runCurrent()
+            assertTrue(viewModel.searchState.value is SearchUiState.Loading)
+            viewModel.search("")
+            advanceUntilIdle()
+            assertTrue(viewModel.searchState.value is SearchUiState.Idle)
+        }
+
+    @Test
     fun `initial state is Idle, no automatic search (Step 1 contract change)`() =
         runTest(testDispatcher) {
             // Step 0 auto-searched "" on init and the fake returned all

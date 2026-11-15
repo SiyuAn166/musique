@@ -260,6 +260,7 @@ class SearchViewModel(
     private var loadMoreJob: Job? = null
     private var progressJob: Job? = null
     private var suggestJob: Job? = null
+    private var searchJob: Job? = null
 
     /**
      * The query the latest keystroke asked suggestions for. A
@@ -464,13 +465,17 @@ class SearchViewModel(
         val trimmed = query.trim()
         clearSuggestions()
         loadMoreJob?.cancel()
+        // Cancel the previous search: a newer query (or a clear
+        // back to Idle) must win, never be overwritten by a stale
+        // result arriving late.
+        searchJob?.cancel()
         if (trimmed.isEmpty()) {
             _searchState.value = SearchUiState.Idle
             return
         }
         lastQuery = trimmed
         _searchState.value = SearchUiState.Loading
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             try {
                 val tracks = repository.search(trimmed)
                 _searchState.value = if (tracks.isEmpty()) {
