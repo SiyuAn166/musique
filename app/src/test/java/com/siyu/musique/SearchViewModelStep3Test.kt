@@ -5,6 +5,7 @@ import com.siyu.musique.core.logging.MusiqueLogger
 import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
 import com.siyu.musique.core.network.BiliNetworkException
+import com.siyu.musique.data.DetailedTrack
 import com.siyu.musique.data.FakeSearchRepository
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.model.Track
@@ -67,9 +68,10 @@ class SearchViewModelStep3Test {
 
         override suspend fun search(query: String): List<Track> = emptyList()
 
-        override suspend fun fetchDetail(track: Track): Track {
+        override suspend fun fetchDetail(track: Track): DetailedTrack {
             detailCalls++
-            return detailAnswer(track)
+            val filled = detailAnswer(track)
+            return DetailedTrack(filled, listOf(filled))
         }
 
         override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream {

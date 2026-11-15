@@ -31,7 +31,8 @@ class FakeSearchRepository : SearchRepository {
         }
     }
 
-    override suspend fun fetchDetail(track: Track): Track = track
+    override suspend fun fetchDetail(track: Track): DetailedTrack =
+        DetailedTrack(track, listOf(track))
 
     /**
      * A canned 192K stream. The URL is fake and never fetched: the

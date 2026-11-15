@@ -373,7 +373,7 @@ class SearchViewModel(
     fun play(track: Track) {
         logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid}")
         adoptSearchQueueFor(track)
-        playAt(track, startPositionMs = 0L, resumePlaying = true)
+        playAt(track, startPositionMs = 0L, resumePlaying = true, adoptPartsQueue = true)
     }
 
     /**
@@ -422,9 +422,19 @@ class SearchViewModel(
      * hand-off to the engine. [startPositionMs] seeks into the new
      * item once the engine has it (quality changes resume where the
      * old item left off); [resumePlaying] false pauses immediately
-     * after the hand-off, keeping a paused track paused.
+     * after the hand-off, keeping a paused track paused. When
+     * [adoptPartsQueue] is true (search plays only) and the details
+     * call finds more than one part, the parts become the queue so
+     * a multi-part video plays through in order instead of stopping
+     * after the first part; the search list row keeps the
+     * video-level track while the player shows the part playing.
      */
-    private fun playAt(track: Track, startPositionMs: Long, resumePlaying: Boolean) {
+    private fun playAt(
+        track: Track,
+        startPositionMs: Long,
+        resumePlaying: Boolean,
+        adoptPartsQueue: Boolean = false,
+    ) {
         playIntent++
         val intent = playIntent
         refetchedForIntent = false
@@ -451,10 +461,16 @@ class SearchViewModel(
             try {
                 var current = track
                 if (current.cid.isEmpty()) {
-                    current = repository.fetchDetail(current)
+                    val detailed = repository.fetchDetail(current)
                     if (intent != playIntent) return@launch
+                    updateTrackInList(detailed.track)
+                    if (adoptPartsQueue && detailed.parts.size > 1) {
+                        currentQueue = detailed.parts
+                        current = detailed.parts[0]
+                    } else {
+                        current = detailed.track
+                    }
                     _currentTrack.value = current
-                    updateTrackInList(current)
                 }
                 val stream = repository.fetchPlayUrl(current, _qualityPreference.value)
                 if (intent != playIntent) return@launch
@@ -727,18 +743,31 @@ class SearchViewModel(
         }
     }
 
+    /**
+     * The current track's position in the queue, or -1. Parts of
+     * one video share a bvid, so the lookup is by [Track.key]
+     * (bvid:cid) first; it falls back to bvid alone for queue
+     * entries whose cid was still empty when the queue was
+     * snapshotted (a playlist track played before its details
+     * resolved).
+     */
+    private fun indexOfCurrent(): Int {
+        val current = _currentTrack.value ?: return -1
+        val byKey = currentQueue.indexOfFirst { it.key == current.key }
+        if (byKey >= 0) return byKey
+        return currentQueue.indexOfFirst { it.id == current.id }
+    }
+
     /** The track after the current one in the queue, or null at the end (or with no queue). */
     private fun trackAfterCurrent(): Track? {
-        val current = _currentTrack.value ?: return null
-        val index = currentQueue.indexOfFirst { it.id == current.id }
+        val index = indexOfCurrent()
         if (index < 0 || index + 1 >= currentQueue.size) return null
         return currentQueue[index + 1]
     }
 
     /** The track before the current one in the queue, or null at the start (or with no queue). */
     private fun trackBeforeCurrent(): Track? {
-        val current = _currentTrack.value ?: return null
-        val index = currentQueue.indexOfFirst { it.id == current.id }
+        val index = indexOfCurrent()
         if (index <= 0) return null
         return currentQueue[index - 1]
     }

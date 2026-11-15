@@ -4,6 +4,7 @@ import com.siyu.musique.core.logging.LogBuffer
 import com.siyu.musique.core.logging.MusiqueLogger
 import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
+import com.siyu.musique.data.DetailedTrack
 import com.siyu.musique.data.FakeSearchRepository
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
@@ -60,9 +61,10 @@ class PlaylistViewModelTest {
 
         override suspend fun search(query: String): List<Track> = emptyList()
 
-        override suspend fun fetchDetail(track: Track): Track {
+        override suspend fun fetchDetail(track: Track): DetailedTrack {
             detailCalls++
-            return track.copy(cid = "999")
+            val filled = track.copy(cid = "999")
+            return DetailedTrack(filled, listOf(filled))
         }
 
         override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream =

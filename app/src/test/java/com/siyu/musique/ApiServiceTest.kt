@@ -23,6 +23,8 @@ const val SEARCH_ITEM_2 = """{"author":"超级爱下雨天","aid":11677915421296
 const val SEARCH_DATA = """{"page":1,"pagesize":20,"numResults":1000,"numPages":50,"result":[{"result_type":"bili_user","data":[{"uname":"someone","usign":"hi"}]},{"result_type":"video","data":[$SEARCH_ITEM_1,$SEARCH_ITEM_2]}]}"""
 const val VIEW_DATA = """{"bvid":"BV1q4FTeBEMj","aid":113911642789603,"pic":"http://i2.hdslb.com/bfs/archive/25c409c43790cc13bf9ebc473b36c4f650527653.jpg","title":"周杰伦歌曲精选100首 歌词版纯享 地表最高音质 每一首都是顶级文案 中国流行音乐开拓者JAY","duration":25142,"cid":28139389900,"owner":{"mid":1346923466,"name":"无损音乐合集"},"pages":[{"cid":28139389900,"page":1,"part":"001. 夜曲-周杰伦","duration":228}]}"""
 const val PAGELIST_DATA = """[{"cid":28139389900,"page":1,"part":"001. 夜曲-周杰伦","duration":228}]"""
+const val VIEW_DATA_MULTI = """{"bvid":"BV1q4FTeBEMj","aid":113911642789603,"pic":"http://i2.hdslb.com/bfs/archive/25c409c43790cc13bf9ebc473b36c4f650527653.jpg","title":"周杰伦歌曲精选100首","duration":25142,"cid":28139389900,"owner":{"mid":1346923466,"name":"无损音乐合集"},"pages":[{"cid":28139389900,"page":1,"part":"001. 夜曲-周杰伦","duration":228},{"cid":28139389901,"page":2,"part":"002. 青花瓷-周杰伦","duration":241},{"cid":28139389902,"page":3,"part":"003. 稻香-周杰伦","duration":217}]}"""
+const val PAGELIST_DATA_MULTI = """[{"cid":28139389900,"page":1,"part":"001. 夜曲-周杰伦","duration":228},{"cid":28139389901,"page":2,"part":"002. 青花瓷-周杰伦","duration":241},{"cid":28139389902,"page":3,"part":"003. 稻香-周杰伦","duration":217}]"""
 const val NAV_DATA = """{"isLogin":false,"wbi_img":{"img_url":"https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png","sub_url":"https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png"}}"""
 }
 
@@ -117,7 +119,8 @@ fail("expected BiliParseException")
 fun `detail uses the signed wbi view path and fills cid from pages`() = runTest {
 val gateway = FakeGateway()
 gateway.enqueue(envelopeResponse(0, VIEW_DATA))
-val track = service(gateway).fetchDetail("BV1q4FTeBEMj")
+val detail = service(gateway).fetchDetail("BV1q4FTeBEMj")
+val track = detail.track
 
 val url = gateway.requests.single().url
 assertTrue(url.startsWith("https://api.bilibili.com/x/web-interface/wbi/view?"))
@@ -132,6 +135,9 @@ assertEquals(
     "https://i2.hdslb.com/bfs/archive/25c409c43790cc13bf9ebc473b36c4f650527653.jpg",
     track.cover,
 )
+assertEquals(1, detail.parts.size)
+assertEquals("28139389900", detail.parts[0].cid)
+assertEquals("001. 夜曲-周杰伦", detail.parts[0].title)
 }
 
 @Test
@@ -146,14 +152,55 @@ envelopeResponse(0, PAGELIST_DATA)
 else -> error("unexpected ${request.url}")
 }
 }
-val track = service(gateway).fetchDetail("BV1q4FTeBEMj")
+val detail = service(gateway).fetchDetail("BV1q4FTeBEMj")
+val track = detail.track
 assertEquals("28139389900", track.cid)
 assertEquals("", track.title)
 assertEquals(228_000L, track.duration.inWholeMilliseconds)
+assertEquals(1, detail.parts.size)
+assertEquals("001. 夜曲-周杰伦", detail.parts[0].title)
 assertTrue(gateway.requests.any { it.url.contains("pagelist")})
 // The pagelist fallback is unsigned.
 val pagelistUrl = gateway.requests.first { it.url.contains("pagelist")}.url
 assertTrue(!pagelistUrl.contains("w_rid"))
+}
+
+@Test
+fun `detail returns every page as a part, in order`() = runTest {
+val gateway = FakeGateway()
+gateway.enqueue(envelopeResponse(0, VIEW_DATA_MULTI))
+val detail = service(gateway).fetchDetail("BV1q4FTeBEMj")
+assertEquals(3, detail.parts.size)
+assertEquals("28139389900", detail.parts[0].cid)
+assertEquals("001. 夜曲-周杰伦", detail.parts[0].title)
+assertEquals(228_000L, detail.parts[0].duration.inWholeMilliseconds)
+assertEquals("28139389901", detail.parts[1].cid)
+assertEquals("002. 青花瓷-周杰伦", detail.parts[1].title)
+assertEquals(241_000L, detail.parts[1].duration.inWholeMilliseconds)
+assertEquals("28139389902", detail.parts[2].cid)
+assertEquals("003. 稻香-周杰伦", detail.parts[2].title)
+// The video-level track still carries the first part's cid.
+assertEquals("28139389900", detail.track.cid)
+assertEquals("周杰伦歌曲精选100首", detail.track.title)
+}
+
+@Test
+fun `pagelist fallback returns every entry as a part`() = runTest {
+val gateway = FakeGateway()
+gateway.handler = { request ->
+when {
+request.url.contains("wbi/view") ->
+envelopeResponse(-412, "null", message = "banned")
+request.url.contains("pagelist") ->
+envelopeResponse(0, PAGELIST_DATA_MULTI)
+else -> error("unexpected ${request.url}")
+}
+}
+val detail = service(gateway).fetchDetail("BV1q4FTeBEMj")
+assertEquals(3, detail.parts.size)
+assertEquals("28139389901", detail.parts[1].cid)
+assertEquals("002. 青花瓷-周杰伦", detail.parts[1].title)
+assertEquals("", detail.track.title)
 }
 
 @Test

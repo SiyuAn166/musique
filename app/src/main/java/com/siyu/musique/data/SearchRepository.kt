@@ -23,6 +23,14 @@ import com.siyu.musique.model.Track
  */
 data class SearchPageResult(val tracks: List<Track>, val page: Int, val hasMore: Boolean)
 
+/**
+ * The result of resolving a track's details: the video-level
+ * [track] (for the search list row) plus every [part] of the video
+ * as its own track, in order. [parts] always holds at least the
+ * video itself.
+ */
+data class DetailedTrack(val track: Track, val parts: List<Track>)
+
 interface SearchRepository {
     /**
      * Tracks matching [query]. A blank query sends no request and
@@ -55,9 +63,14 @@ interface SearchRepository {
     /**
      * Fills in [track]'s cid (and title/artist/cover/duration when
      * the details call has them) from the video details endpoint,
-     * with the pagelist as a cid-only fallback.
+     * with the pagelist as a cid-only fallback. [parts] holds every
+     * part of the video as its own track (same bvid, per-part cid,
+     * title, and duration); a single-part video yields one part.
+     * Callers that play from search use the parts as the queue so
+     * a multi-part video plays through instead of stopping after
+     * the first part.
      */
-    suspend fun fetchDetail(track: Track): Track
+    suspend fun fetchDetail(track: Track): DetailedTrack
 
     /**
      * Resolves the playable DASH audio stream for [track], which must

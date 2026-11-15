@@ -136,7 +136,10 @@ fun PlaylistDetailScreen(
                     ) { index, track ->
                         SongRow(
                             track = track,
-                            isCurrent = track.key == currentTrack?.key,
+                            // Rows are videos: match by bvid, since the
+                            // row's cid may still be empty while the
+                            // playing track's cid was filled by details.
+                            isCurrent = track.id == currentTrack?.id,
                             onClick = { viewModel.playFromPlaylist(track, playlist) },
                             trailing = {
                                 IconButton(

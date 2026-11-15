@@ -265,7 +265,9 @@ fun SearchScreen(
                     itemsIndexed(state.tracks, key = { _, track -> track.key }) { index, track ->
                         SongRow(
                             track = track,
-                            isCurrent = track.key == currentTrack?.key,
+                            // Rows are videos: stay highlighted while any
+                            // part of the video plays, not just part one.
+                            isCurrent = track.id == currentTrack?.id,
                             onClick = { viewModel.play(track) },
                             trailing = {
                                 IconButton(onClick = { chooserTrack = track }) {

@@ -154,7 +154,7 @@ class BiliSearchRepositoryTest {
             cover = "https://cover.example/x.jpg",
             duration = 100.seconds,
         )
-        val detailed = repository.fetchDetail(searchTrack)
+        val detailed = repository.fetchDetail(searchTrack).track
         assertEquals("28139389900", detailed.cid)
         assertEquals("Search Title", detailed.title)
         assertEquals("Search Artist", detailed.artist)
@@ -175,7 +175,7 @@ class BiliSearchRepositoryTest {
             cover = "https://cover.example/x.jpg",
             duration = 100.seconds,
         )
-        val detailed = repository.fetchDetail(searchTrack)
+        val detailed = repository.fetchDetail(searchTrack).track
         assertEquals("28139389900", detailed.cid)
         assertEquals("https://cover.example/x.jpg", detailed.cover)
     }
@@ -193,11 +193,57 @@ class BiliSearchRepositoryTest {
             cover = "",
             duration = 100.seconds,
         )
-        val detailed = repository.fetchDetail(searchTrack)
+        val detailed = repository.fetchDetail(searchTrack).track
         assertEquals("28139389900", detailed.cid)
         assertEquals(
             "https://i2.hdslb.com/bfs/archive/25c409c43790cc13bf9ebc473b36c4f650527653.jpg",
             detailed.cover,
         )
+    }
+
+    @Test
+    fun `fetchDetail turns every part into its own track`() = runTest {
+        val gateway = FakeGateway()
+        val stack = Stack(gateway)
+        gateway.handler = { request ->
+            when {
+                request.url.contains("finger/spi") ->
+                    envelopeResponse(0, BiliBootstrapTest.FINGER_DATA)
+                request.url.contains("GenWebTicket") ->
+                    envelopeResponse(0, BiliBootstrapTest.TICKET_DATA)
+                request.url == "https://www.bilibili.com/" ->
+                    plainResponse(200, "<html/>")
+                request.url.contains("wbi/view") ->
+                    envelopeResponse(0, ApiServiceTest.VIEW_DATA_MULTI)
+                request.url.contains("pagelist") ->
+                    envelopeResponse(0, ApiServiceTest.PAGELIST_DATA)
+                request.url.contains("/nav") ->
+                    envelopeResponse(-101, ApiServiceTest.NAV_DATA)
+                else -> error("unexpected ${request.url}")
+            }
+        }
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope)
+        advanceUntilIdle()
+        val searchTrack = Track(
+            id = "BV1q4FTeBEMj",
+            cid = "",
+            title = "Search Title",
+            artist = "Search Artist",
+            cover = "https://cover.example/x.jpg",
+            duration = 100.seconds,
+        )
+        val detailed = repository.fetchDetail(searchTrack)
+        assertEquals("28139389900", detailed.track.cid)
+        assertEquals(3, detailed.parts.size)
+        assertEquals("001. 夜曲-周杰伦", detailed.parts[0].title)
+        assertEquals("28139389900", detailed.parts[0].cid)
+        assertEquals(228_000L, detailed.parts[0].duration.inWholeMilliseconds)
+        assertEquals("002. 青花瓷-周杰伦", detailed.parts[1].title)
+        assertEquals("28139389901", detailed.parts[1].cid)
+        assertEquals("003. 稻香-周杰伦", detailed.parts[2].title)
+        // Parts share the video's artist and the known-good search cover.
+        assertTrue(detailed.parts.all { it.artist == "无损音乐合集" })
+        assertTrue(detailed.parts.all { it.cover == "https://cover.example/x.jpg" })
+        assertTrue(detailed.parts.all { it.id == "BV1q4FTeBEMj" })
     }
 }

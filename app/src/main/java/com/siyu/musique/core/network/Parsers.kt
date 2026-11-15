@@ -114,31 +114,57 @@ fun normalizeCover(pic: String): String = when {
     else -> pic
 }
 
+/** One part of a multi-part video: its cid, part name, and duration. */
+data class VideoPart(val cid: String, val title: String, val duration: Duration)
+
+/**
+ * Video details: the video-level [track] (title, artist, cover,
+ * first part's cid and duration) plus every [part] in order. A
+ * single-part video has exactly one part; a 100-part compilation
+ * has 100, and they play in order as a queue.
+ */
+data class VideoDetail(val track: Track, val parts: List<VideoPart>)
+
 /**
  * Video details from /x/web-interface/wbi/view: title, owner.name,
- * pic, and pages[0] (cid, duration in seconds). When pages is empty,
- * the top-level cid and duration fields are the fallback.
+ * pic, and every page (cid, part name, duration in seconds). When
+ * pages is empty, the top-level cid and duration fields are the
+ * fallback, as a single unnamed part.
  */
-fun parseViewDetail(data: JsonElement, bvid: String): Track {
+fun parseViewDetail(data: JsonElement, bvid: String): VideoDetail {
     val root = data as? JsonObject ?: throw parseError("View data is not an object", data)
     val title = root.stringOrNull("title") ?: bvid
     val artist = root.objectOrNull("owner")?.stringOrNull("name") ?: ""
     val cover = normalizeCover(root.stringOrNull("pic") ?: "")
     val pages = root.arrayOrNull("pages")
-    val firstPage = pages?.firstOrNull() as? JsonObject
-    val cid = firstPage?.contentOrNull("cid")
-        ?: root.contentOrNull("cid")
-        ?: throw parseError("View data has no cid", data)
-    val durationSeconds = firstPage?.longOrNull("duration")
-        ?: root.longOrNull("duration")
-        ?: 0L
-    return Track(
-        id = bvid,
-        cid = cid,
-        title = title,
-        artist = artist,
-        cover = cover,
-        duration = durationSeconds.coerceAtLeast(0L).seconds,
+        ?.mapNotNull { it as? JsonObject }
+        .orEmpty()
+    val parts = if (pages.isNotEmpty()) {
+        pages.map { page ->
+            VideoPart(
+                cid = page.contentOrNull("cid")
+                    ?: throw parseError("View page has no cid", data),
+                title = page.stringOrNull("part") ?: "",
+                duration = (page.longOrNull("duration") ?: 0L).coerceAtLeast(0L).seconds,
+            )
+        }
+    } else {
+        val cid = root.contentOrNull("cid")
+            ?: throw parseError("View data has no cid", data)
+        val durationSeconds = root.longOrNull("duration") ?: 0L
+        listOf(VideoPart(cid, "", durationSeconds.coerceAtLeast(0L).seconds))
+    }
+    val first = parts.first()
+    return VideoDetail(
+        track = Track(
+            id = bvid,
+            cid = first.cid,
+            title = title,
+            artist = artist,
+            cover = cover,
+            duration = first.duration,
+        ),
+        parts = parts,
     )
 }
 
@@ -146,20 +172,29 @@ fun parseViewDetail(data: JsonElement, bvid: String): Track {
 data class PagelistEntry(val cid: String, val part: String, val duration: Duration)
 
 /**
- * Pagelist fallback: data is an array of parts; the first part's cid
- * is the one Step 1 needs. Used only when wbi/view fails.
+ * Pagelist fallback: data is an array of parts. Used only when
+ * wbi/view fails; returns every part in order.
  */
-fun parsePagelist(data: JsonElement): PagelistEntry {
+fun parsePagelistParts(data: JsonElement): List<VideoPart> {
     val parts = data as? JsonArray ?: throw parseError("Pagelist data is not an array", data)
-    val first = parts.firstOrNull() as? JsonObject
-        ?: throw parseError("Pagelist is empty", data)
-    val cid = first.contentOrNull("cid")
-        ?: throw parseError("Pagelist entry has no cid", data)
-    return PagelistEntry(
-        cid = cid,
-        part = first.stringOrNull("part") ?: "",
-        duration = (first.longOrNull("duration") ?: 0L).coerceAtLeast(0L).seconds,
-    )
+    if (parts.isEmpty()) throw parseError("Pagelist is empty", data)
+    return parts.map { element ->
+        val entry = element as? JsonObject
+            ?: throw parseError("Pagelist entry is not an object", data)
+        val cid = entry.contentOrNull("cid")
+            ?: throw parseError("Pagelist entry has no cid", data)
+        VideoPart(
+            cid = cid,
+            title = entry.stringOrNull("part") ?: "",
+            duration = (entry.longOrNull("duration") ?: 0L).coerceAtLeast(0L).seconds,
+        )
+    }
+}
+
+/** The first pagelist entry only; kept for callers that need one part. */
+fun parsePagelist(data: JsonElement): PagelistEntry {
+    val first = parsePagelistParts(data).first()
+    return PagelistEntry(cid = first.cid, part = first.title, duration = first.duration)
 }
 
 /**

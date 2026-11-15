@@ -4,6 +4,7 @@ import com.siyu.musique.core.logging.LogBuffer
 import com.siyu.musique.core.logging.MusiqueLogger
 import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
+import com.siyu.musique.data.DetailedTrack
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.model.Track
@@ -41,7 +42,8 @@ class VolumeControlTest {
     private class StubRepository : SearchRepository {
         override suspend fun search(query: String): List<Track> = emptyList()
 
-        override suspend fun fetchDetail(track: Track): Track = track
+        override suspend fun fetchDetail(track: Track): DetailedTrack =
+            DetailedTrack(track, listOf(track))
 
         override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream =
             AudioStream(30280, "https://cdn.example/q-${track.id}.m4s", 216670L)

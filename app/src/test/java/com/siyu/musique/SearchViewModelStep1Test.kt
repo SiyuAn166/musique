@@ -3,6 +3,7 @@ package com.siyu.musique
 import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliNetworkException
 import com.siyu.musique.core.network.BiliParseException
+import com.siyu.musique.data.DetailedTrack
 import com.siyu.musique.data.FakeSearchRepository
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.model.Track
@@ -47,16 +48,18 @@ class SearchViewModelStep1Test {
             throw error
         }
 
-        override suspend fun fetchDetail(track: Track): Track = track
+        override suspend fun fetchDetail(track: Track): DetailedTrack =
+            DetailedTrack(track, listOf(track))
     }
 
     private class DetailFillingRepository(
         private val delegate: SearchRepository = FakeSearchRepository(),
     ) : SearchRepository by delegate {
         var detailCalls = 0
-        override suspend fun fetchDetail(track: Track): Track {
+        override suspend fun fetchDetail(track: Track): DetailedTrack {
             detailCalls++
-            return track.copy(cid = "999", title = "Detailed Title")
+            val filled = track.copy(cid = "999", title = "Detailed Title")
+            return DetailedTrack(filled, listOf(filled))
         }
     }
 
@@ -207,7 +210,7 @@ class SearchViewModelStep1Test {
             // failure is a player error with a visible message and
             // Retry, and nothing pretends to play.
             val repository = object : SearchRepository by FakeSearchRepository() {
-                override suspend fun fetchDetail(track: Track): Track {
+                override suspend fun fetchDetail(track: Track): DetailedTrack {
                     throw BiliNetworkException("no network")
                 }
             }

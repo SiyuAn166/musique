@@ -35,7 +35,7 @@ class ApiService(
      * no title, artist, or cover: the fallback track carries empty
      * strings there and the caller merges it with the search result.
      */
-    suspend fun fetchDetail(bvid: String): Track {
+    suspend fun fetchDetail(bvid: String): VideoDetail {
         val detailUrl = "$WBI_VIEW_URL?bvid=${WbiSigner.percentEncode(bvid)}"
         try {
             return parseViewDetail(client.getData(detailUrl, signed = true), bvid)
@@ -48,15 +48,19 @@ class ApiService(
             try {
                 val pagelistUrl =
                     "$PAGELIST_URL?bvid=${WbiSigner.percentEncode(bvid)}"
-                val entry = parsePagelist(client.getData(pagelistUrl, signed = false))
-                logger.i(TAG, "detail pagelist fallback ok for $bvid cid=${entry.cid}")
-                return Track(
-                    id = bvid,
-                    cid = entry.cid,
-                    title = "",
-                    artist = "",
-                    cover = "",
-                    duration = entry.duration,
+                val parts = parsePagelistParts(client.getData(pagelistUrl, signed = false))
+                val first = parts.first()
+                logger.i(TAG, "detail pagelist fallback ok for $bvid cid=${first.cid}")
+                return VideoDetail(
+                    track = Track(
+                        id = bvid,
+                        cid = first.cid,
+                        title = "",
+                        artist = "",
+                        cover = "",
+                        duration = first.duration,
+                    ),
+                    parts = parts,
                 )
             } catch (fallbackError: Exception) {
                 logger.e(

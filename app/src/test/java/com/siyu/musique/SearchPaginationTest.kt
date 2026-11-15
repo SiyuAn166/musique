@@ -13,6 +13,7 @@ import com.siyu.musique.core.network.HttpResponse
 import com.siyu.musique.core.network.InMemoryBootstrapStore
 import com.siyu.musique.core.network.WbiKeyStore
 import com.siyu.musique.data.BiliSearchRepository
+import com.siyu.musique.data.DetailedTrack
 import com.siyu.musique.data.FakeSearchRepository
 import com.siyu.musique.data.SearchPageResult
 import com.siyu.musique.data.SearchRepository
@@ -202,7 +203,8 @@ class SearchPaginationTest {
             return loaded.toList()
         }
 
-        override suspend fun fetchDetail(track: Track): Track = track
+        override suspend fun fetchDetail(track: Track): DetailedTrack =
+            DetailedTrack(track, listOf(track))
 
         override suspend fun loadMore(): SearchPageResult {
             loadMoreCalls++

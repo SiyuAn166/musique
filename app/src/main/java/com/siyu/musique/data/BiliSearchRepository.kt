@@ -74,7 +74,7 @@ class BiliSearchRepository(
                     cover = "",
                     duration = Duration.ZERO,
                 )
-                tracks = listOf(fetchDetail(placeholder))
+                tracks = listOf(fetchDetail(placeholder).track)
                 // Single-item lookups never page.
                 currentPage = 1
                 accumulated = tracks
@@ -138,23 +138,36 @@ class BiliSearchRepository(
         hasMorePages = false
     }
 
-    override suspend fun fetchDetail(track: Track): Track {
+    override suspend fun fetchDetail(track: Track): DetailedTrack {
         try {
             val detail = apiService.fetchDetail(track.id)
+            val video = detail.track
             // The cover prefers the track's own: the search cover is
             // already showing in the list, so it is known good, while
             // the detail pic has come back in a form that fails to
             // load (plain http:// before normalizeCover upgraded
             // it). The detail cover only fills an empty one.
             val merged = track.copy(
-                cid = detail.cid,
-                title = detail.title.ifEmpty { track.title },
-                artist = detail.artist.ifEmpty { track.artist },
-                cover = track.cover.ifEmpty { detail.cover },
-                duration = if (detail.duration > Duration.ZERO) detail.duration else track.duration,
+                cid = video.cid,
+                title = video.title.ifEmpty { track.title },
+                artist = video.artist.ifEmpty { track.artist },
+                cover = track.cover.ifEmpty { video.cover },
+                duration = if (video.duration > Duration.ZERO) video.duration else track.duration,
             )
-            logger.i(TAG, "detail ok bvid=${track.id} cid=${merged.cid}")
-            return merged
+            // Every part becomes its own track: the part name when
+            // the video has one (multi-part compilations name each
+            // song), the video title otherwise, each with its own
+            // cid and duration. The search row keeps the video-level
+            // merged track; playback walks the parts in order.
+            val parts = detail.parts.map { part ->
+                merged.copy(
+                    cid = part.cid,
+                    title = part.title.ifEmpty { merged.title },
+                    duration = if (part.duration > Duration.ZERO) part.duration else merged.duration,
+                )
+            }.ifEmpty { listOf(merged) }
+            logger.i(TAG, "detail ok bvid=${track.id} cid=${merged.cid} parts=${parts.size}")
+            return DetailedTrack(merged, parts)
         } catch (e: Exception) {
             logger.e(TAG, "detail failed for ${track.id}: ${describeError(e)}")
             throw e
