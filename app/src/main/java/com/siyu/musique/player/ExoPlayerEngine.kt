@@ -46,7 +46,7 @@ class ExoPlayerEngine(
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
                 Player.STATE_BUFFERING -> listener?.onBuffering()
-                Player.STATE_READY -> if (playWhenReady) {
+                Player.STATE_READY -> if (player.playWhenReady) {
                     listener?.onPlaying()
                 } else {
                     listener?.onPaused()
