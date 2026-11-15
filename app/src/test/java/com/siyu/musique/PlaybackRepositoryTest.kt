@@ -3,6 +3,7 @@ package com.siyu.musique
 import com.siyu.musique.core.logging.LogBuffer
 import com.siyu.musique.core.logging.MusiqueLogger
 import com.siyu.musique.core.network.ApiService
+import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliBootstrap
 import com.siyu.musique.core.network.BiliClient
@@ -103,6 +104,51 @@ class PlaybackRepositoryTest {
         repository.fetchPlayUrl(track())
         repository.fetchPlayUrl(track())
         assertEquals(2, stack.gateway.requests.count { it.url.contains("playurl") })
+    }
+
+    @Test
+    fun `fetchPlayUrl honors the quality preference`() = runTest {
+        val logger = MusiqueLogger(LogBuffer(capacity = 50, clock = { 1000L }))
+        val stack = Stack(FakeGateway(), logger)
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope, logger)
+        advanceUntilIdle()
+        assertEquals(30280, repository.fetchPlayUrl(track(), AudioQuality.BEST).qualityId)
+        assertEquals(30216, repository.fetchPlayUrl(track(), AudioQuality.Q64).qualityId)
+        assertEquals(30232, repository.fetchPlayUrl(track(), AudioQuality.Q132).qualityId)
+    }
+
+    @Test
+    fun `fetchPlayUrl with best picks hi-res, with 192K it is a parse error`() = runTest {
+        val logger = MusiqueLogger(LogBuffer(capacity = 50, clock = { 1000L }))
+        val gateway = FakeGateway()
+        val stack = Stack(gateway, logger)
+        gateway.handler = { request ->
+            when {
+                request.url.contains("finger/spi") ->
+                    envelopeResponse(0, BiliBootstrapTest.FINGER_DATA)
+                request.url.contains("GenWebTicket") ->
+                    envelopeResponse(0, BiliBootstrapTest.TICKET_DATA)
+                request.url == "https://www.bilibili.com/" ->
+                    plainResponse(200, "<html/>")
+                request.url.contains("playurl") ->
+                    envelopeResponse(
+                        0,
+                        """{"dash":{"audio":[{"id":30251,"baseUrl":"https://cdn.example/hires.m4s","bandwidth":900000,"codecid":0}]}}""",
+                    )
+                request.url.contains("/nav") ->
+                    envelopeResponse(-101, ApiServiceTest.NAV_DATA)
+                else -> error("unexpected ${request.url}")
+            }
+        }
+        val repository = BiliSearchRepository(stack.api, stack.bootstrap, backgroundScope, logger)
+        advanceUntilIdle()
+        assertEquals(30251, repository.fetchPlayUrl(track(), AudioQuality.BEST).qualityId)
+        try {
+            repository.fetchPlayUrl(track(), AudioQuality.Q192)
+            fail("expected BiliParseException")
+        } catch (_: BiliParseException) {
+            // expected: an explicit choice never falls upward.
+        }
     }
 
     @Test

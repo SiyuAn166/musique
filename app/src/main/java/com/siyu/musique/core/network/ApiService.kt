@@ -71,15 +71,20 @@ class ApiService(
 
     /**
      * Stream URL for [bvid] + [cid]: /x/player/playurl, fnval 4048,
-     * no qn, unsigned (same transport as search). Returns the picked
-     * DASH audio stream: 30280 first, then 30232, then 30216, never
-     * Dolby/Hi-Res. The URL expires, so callers resolve fresh on
-     * every play intent and never cache it.
+     * no qn, unsigned (same transport as search). Returns the DASH
+     * audio stream picked by [preference]'s try order (default
+     * [AudioQuality.BEST]: Hi-Res, Dolby, 192K, 132K, 64K). The URL
+     * expires, so callers resolve fresh on every play intent and
+     * never cache it.
      */
-    suspend fun fetchPlayUrl(bvid: String, cid: String): AudioStream {
+    suspend fun fetchPlayUrl(
+        bvid: String,
+        cid: String,
+        preference: AudioQuality = AudioQuality.BEST,
+    ): AudioStream {
         val url = "$PLAYURL_URL?bvid=${WbiSigner.percentEncode(bvid)}" +
             "&cid=${WbiSigner.percentEncode(cid)}&fnval=4048"
-        return parsePlayUrl(client.getData(url, signed = false))
+        return parsePlayUrl(client.getData(url, signed = false), preference)
     }
 
     /**

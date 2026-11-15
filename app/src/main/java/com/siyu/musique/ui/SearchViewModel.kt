@@ -6,17 +6,24 @@ import androidx.lifecycle.viewModelScope
 import com.siyu.musique.core.logging.LogLine
 import com.siyu.musique.core.logging.MusiqueLog
 import com.siyu.musique.core.logging.MusiqueLogger
+import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliNetworkException
 import com.siyu.musique.core.network.BiliParseException
+import com.siyu.musique.data.InMemoryPlaylistStore
+import com.siyu.musique.data.InMemoryQualityPreferenceStore
+import com.siyu.musique.data.PlaylistStore
+import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.data.describeError
+import com.siyu.musique.model.Playlist
 import com.siyu.musique.model.Track
 import com.siyu.musique.player.NoOpPlayerEngine
 import com.siyu.musique.player.PlaybackError
 import com.siyu.musique.player.PlayerEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,6 +92,14 @@ sealed interface PlayerUiState {
 }
 
 /**
+ * Playback progress in milliseconds. [durationMs] is the engine's
+ * duration when known, otherwise the current track's duration; 0
+ * when neither is known. The UI derives the slider fraction and the
+ * elapsed/remaining times from this.
+ */
+data class PlaybackProgress(val positionMs: Long, val durationMs: Long)
+
+/**
  * Holds search state, the current queue, and playback state.
  *
  * Step 3: tapping a track fills in its cid when missing, resolves a
@@ -99,13 +114,36 @@ sealed interface PlayerUiState {
  * URL is refetched once for the same intent; a second failure stops
  * in the error state.
  *
- * The queue is the current search result list; previous/next move
- * inside it only and stop at either end.
+ * Step 4: progress is polled from the engine while playing and
+ * exposed as [playbackProgress]; [seekTo] scrubs within the current
+ * item; when a track ends, playback auto-advances to the next track
+ * in the queue (stopping paused at the last one). The audio quality
+ * preference ([qualityPreference]) is owned here, persisted through
+ * [QualityPreferenceStore], and passed to every play URL resolve;
+ * changing it while a track is loaded re-resolves the URL and
+ * resumes at the same position.
+ *
+ * Playlists: [playlists] is the stored list in creation order, with
+ * the default playlist always present (bootstrapped on first launch
+ * through [PlaylistStore]). Creating, deleting, adding to, and
+ * removing from playlists update the flow synchronously and persist
+ * asynchronously; a failed persist is logged and swallowed, never
+ * allowed to lose the in-memory state. Playlist mutations assume the
+ * initial load has completed; in practice it finishes before any
+ * playlist UI can be reached.
+ *
+ * The queue is a snapshot of the list the current track was played
+ * from: the search results for [play], the playlist's tracks for
+ * [playFromPlaylist]. Previous/next/auto-advance move inside that
+ * snapshot only; later edits to the playlist do not rewrite the
+ * in-flight queue. The queue is empty until the first play.
  */
 class SearchViewModel(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
     private val logger: MusiqueLogger = MusiqueLog.shared,
+    private val qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
+    private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
 ) : ViewModel() {
 
     private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -120,12 +158,29 @@ class SearchViewModel(
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
+    private val _playbackProgress = MutableStateFlow(PlaybackProgress(0L, 0L))
+    val playbackProgress: StateFlow<PlaybackProgress> = _playbackProgress.asStateFlow()
+
+    private val _qualityPreference = MutableStateFlow(AudioQuality.BEST)
+    val qualityPreference: StateFlow<AudioQuality> = _qualityPreference.asStateFlow()
+
+    /** The playlists in creation order, default first. Empty only until the initial load lands. */
+    private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
+    val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
+
     /** The app log lines, for the log screen. */
     val logLines: StateFlow<List<LogLine>> = logger.buffer.snapshot
 
     private var lastQuery: String = ""
+
+    /**
+     * The queue prev/next/auto-advance move inside: a snapshot of the
+     * search list or playlist the current track was played from.
+     */
+    private var currentQueue: List<Track> = emptyList()
     private var playJob: Job? = null
     private var loadMoreJob: Job? = null
+    private var progressJob: Job? = null
 
     /** Incremented on every tap; stale async work checks against it. */
     private var playIntent: Int = 0
@@ -140,6 +195,29 @@ class SearchViewModel(
     private var engineHasMedia: Boolean = false
 
     init {
+        viewModelScope.launch {
+            runCatching { qualityPreferenceStore.load() }
+                .onSuccess { stored -> stored?.let { _qualityPreference.value = it } }
+                .onFailure {
+                    logger.w(TAG, "quality preference load failed (${it::class.simpleName})")
+                }
+        }
+        viewModelScope.launch {
+            val result = runCatching { playlistStore.load() }
+            result.onFailure {
+                logger.w(TAG, "playlist load failed (${it::class.simpleName})")
+            }
+            val stored = result.getOrNull()
+            val lists = ensureDefaultPlaylist(stored)
+            _playlists.value = lists
+            // A successful load that came back empty (or without the
+            // default) means first launch or a corrupt value: persist
+            // the bootstrapped list. A failed load never persists,
+            // so a transient read failure cannot wipe stored lists.
+            if (result.isSuccess && (stored.isNullOrEmpty() || stored.none { it.isDefault })) {
+                persistPlaylists(lists)
+            }
+        }
         playerEngine.setListener(object : PlayerEngine.Listener {
             override fun onBuffering() {
                 if (engineIntent != playIntent) return
@@ -152,11 +230,14 @@ class SearchViewModel(
                 if (engineIntent != playIntent) return
                 _playerState.value = PlayerUiState.Playing
                 _isPlaying.value = true
+                startProgressPolling()
                 logger.d(TAG, "player playing intent=$playIntent")
             }
 
             override fun onPaused() {
                 if (engineIntent != playIntent) return
+                stopProgressPolling()
+                publishProgress()
                 _playerState.value = PlayerUiState.Paused
                 _isPlaying.value = false
                 logger.d(TAG, "player paused intent=$playIntent")
@@ -164,13 +245,22 @@ class SearchViewModel(
 
             override fun onEnded() {
                 if (engineIntent != playIntent) return
-                _playerState.value = PlayerUiState.Paused
-                _isPlaying.value = false
+                stopProgressPolling()
                 logger.i(TAG, "player ended intent=$playIntent")
+                val next = trackAfterCurrent()
+                if (next != null) {
+                    logger.i(TAG, "player auto-advance bvid=${next.id}")
+                    playKeepingQueue(next)
+                } else {
+                    publishProgress()
+                    _playerState.value = PlayerUiState.Paused
+                    _isPlaying.value = false
+                }
             }
 
             override fun onError(error: PlaybackError) {
                 if (engineIntent != playIntent) return
+                stopProgressPolling()
                 logger.e(
                     TAG,
                     "player error intent=$playIntent http=${error.isHttpFailure} " +
@@ -268,10 +358,65 @@ class SearchViewModel(
      * throws; a throwing engine stop is logged and swallowed, never
      * allowed to kill the tap. The current track and the fetching
      * state are set synchronously so a tap never looks dead; failures
-     * land in [PlayerUiState.Error].
+     * land in [PlayerUiState.Error]. When [track] is in the current
+     * search results, the search list becomes the queue; otherwise
+     * the queue is left alone.
      */
     fun play(track: Track) {
         logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid}")
+        adoptSearchQueueFor(track)
+        playAt(track, startPositionMs = 0L, resumePlaying = true)
+    }
+
+    /**
+     * Play [track] from [playlist]: the same resolve-and-play flow
+     * as [play], with the playlist's tracks (a snapshot at play time)
+     * as the queue. Later edits to the playlist do not rewrite the
+     * in-flight queue. A track with an empty cid resolves its
+     * details first, through the existing flow.
+     */
+    fun playFromPlaylist(track: Track, playlist: Playlist) {
+        logger.i(
+            TAG,
+            "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid} " +
+                "playlist=${playlist.id}",
+        )
+        currentQueue = playlist.tracks
+        playAt(track, startPositionMs = 0L, resumePlaying = true)
+    }
+
+    /**
+     * Play [track] without touching the queue: previous/next,
+     * auto-advance, and playback retry keep moving inside the queue
+     * the current track came from.
+     */
+    private fun playKeepingQueue(track: Track) {
+        logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid}")
+        playAt(track, startPositionMs = 0L, resumePlaying = true)
+    }
+
+    /**
+     * When [track] is in the current search results, the search list
+     * becomes the queue. When it is not (a retry, or a track played
+     * while other results are showing), the queue is left alone so
+     * playlist playback survives a retry.
+     */
+    private fun adoptSearchQueueFor(track: Track) {
+        val state = _searchState.value as? SearchUiState.Success ?: return
+        if (state.tracks.any { it.id == track.id }) {
+            currentQueue = state.tracks
+        }
+    }
+
+    /**
+     * The shared resolve-and-play flow: a new intent, cid fill when
+     * missing, fresh play URL at the current quality preference,
+     * hand-off to the engine. [startPositionMs] seeks into the new
+     * item once the engine has it (quality changes resume where the
+     * old item left off); [resumePlaying] false pauses immediately
+     * after the hand-off, keeping a paused track paused.
+     */
+    private fun playAt(track: Track, startPositionMs: Long, resumePlaying: Boolean) {
         playIntent++
         val intent = playIntent
         refetchedForIntent = false
@@ -286,7 +431,12 @@ class SearchViewModel(
             )
         }
         engineHasMedia = false
+        stopProgressPolling()
         _currentTrack.value = track
+        _playbackProgress.value = PlaybackProgress(
+            startPositionMs,
+            track.duration.inWholeMilliseconds.coerceAtLeast(0L),
+        )
         _playerState.value = PlayerUiState.Fetching
         _isPlaying.value = true
         playJob = viewModelScope.launch {
@@ -298,7 +448,7 @@ class SearchViewModel(
                     _currentTrack.value = current
                     updateTrackInList(current)
                 }
-                val stream = repository.fetchPlayUrl(current)
+                val stream = repository.fetchPlayUrl(current, _qualityPreference.value)
                 if (intent != playIntent) return@launch
                 _currentTrack.value = current.copy(playUrl = stream.baseUrl)
                 engineIntent = intent
@@ -308,6 +458,15 @@ class SearchViewModel(
                     cacheKey(current, stream.qualityId),
                 )
                 logger.i(TAG, "player play intent=$intent quality=${stream.qualityId}")
+                if (startPositionMs > 0) {
+                    playerEngine.seekTo(startPositionMs)
+                    publishProgress()
+                }
+                if (!resumePlaying) {
+                    playerEngine.pause()
+                    _playerState.value = PlayerUiState.Paused
+                    _isPlaying.value = false
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -319,16 +478,69 @@ class SearchViewModel(
         }
     }
 
-    /** Replays the current track after a player error. Does nothing with no current track. */
+    /** Replays the current track after a player error, keeping the queue. Does nothing with no current track. */
     fun retryPlayback() {
         val track = _currentTrack.value ?: return
-        play(track)
+        playKeepingQueue(track)
+    }
+
+    /**
+     * Seeks within the current item, clamped to [0, duration]. The
+     * duration is the engine's when known, otherwise the track's;
+     * with no known duration only the lower bound applies. Does
+     * nothing when the engine holds no item. The UI calls this on
+     * slider release; while the user drags, the slider shows the
+     * dragged position locally and polling keeps running underneath.
+     */
+    fun seekTo(positionMs: Long) {
+        if (!engineHasMedia) return
+        val duration = effectiveDurationMs()
+        val clamped = if (duration > 0) {
+            positionMs.coerceIn(0L, duration)
+        } else {
+            positionMs.coerceAtLeast(0L)
+        }
+        playerEngine.seekTo(clamped)
+        _playbackProgress.value = PlaybackProgress(clamped, duration)
+        logger.d(TAG, "player seek intent=$playIntent positionMs=$clamped")
+    }
+
+    /**
+     * Changes the audio quality preference, persists it, and, when a
+     * track is loaded, re-resolves its play URL at the new quality
+     * and resumes at the same position (and the same playing/paused
+     * state). With nothing loaded, only the next play is affected.
+     * A no-op when the preference is unchanged.
+     */
+    fun setQualityPreference(preference: AudioQuality) {
+        val previous = _qualityPreference.value
+        if (previous == preference) return
+        _qualityPreference.value = preference
+        logger.i(TAG, "quality preference changed ${previous.label} -> ${preference.label}")
+        viewModelScope.launch {
+            runCatching { qualityPreferenceStore.save(preference) }
+                .onFailure {
+                    logger.w(TAG, "quality preference save failed (${it::class.simpleName})")
+                }
+        }
+        val track = _currentTrack.value ?: return
+        if (!engineHasMedia) return
+        val position = playerEngine.currentPositionMs().coerceAtLeast(0L)
+        val wasPlaying = _isPlaying.value
+        logger.i(
+            TAG,
+            "quality re-resolve intent=${playIntent + 1} bvid=${track.id} " +
+                "positionMs=$position quality=${preference.label}",
+        )
+        playAt(track, startPositionMs = position, resumePlaying = wasPlaying)
     }
 
     fun togglePlayPause() {
         when (_playerState.value) {
             PlayerUiState.Playing, PlayerUiState.Buffering -> {
                 playerEngine.pause()
+                stopProgressPolling()
+                publishProgress()
                 _playerState.value = PlayerUiState.Paused
                 _isPlaying.value = false
                 logger.d(TAG, "player pause requested")
@@ -350,6 +562,7 @@ class SearchViewModel(
                 playJob?.cancel()
                 playerEngine.stop()
                 engineHasMedia = false
+                stopProgressPolling()
                 _playerState.value = PlayerUiState.Paused
                 _isPlaying.value = false
                 logger.d(TAG, "player pause requested while fetching")
@@ -359,21 +572,100 @@ class SearchViewModel(
     }
 
     fun playNext() {
-        val state = _searchState.value as? SearchUiState.Success ?: return
-        val current = _currentTrack.value ?: return
-        val index = state.tracks.indexOfFirst { it.id == current.id }
-        if (index >= 0 && index + 1 < state.tracks.size) {
-            play(state.tracks[index + 1])
-        }
+        trackAfterCurrent()?.let { playKeepingQueue(it) }
     }
 
     fun playPrevious() {
-        val state = _searchState.value as? SearchUiState.Success ?: return
-        val current = _currentTrack.value ?: return
-        val index = state.tracks.indexOfFirst { it.id == current.id }
-        if (index > 0) {
-            play(state.tracks[index - 1])
+        trackBeforeCurrent()?.let { playKeepingQueue(it) }
+    }
+
+    /**
+     * Creates a playlist named [name]. Blank names are rejected;
+     * duplicate names are allowed. The new playlist goes last, in
+     * creation order.
+     */
+    fun createPlaylist(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            logger.w(TAG, "playlist create rejected: blank name")
+            return
         }
+        val created = Playlist.create(trimmed)
+        val updated = _playlists.value + created
+        _playlists.value = updated
+        logger.i(TAG, "playlist created id=${created.id} name=\"$trimmed\"")
+        persistPlaylists(updated)
+    }
+
+    /**
+     * Deletes the playlist with [playlistId]. The default playlist
+     * cannot be deleted; an unknown id is a no-op. The in-flight
+     * queue is a snapshot, so deleting a playlist never disturbs
+     * playback already in progress.
+     */
+    fun deletePlaylist(playlistId: String) {
+        val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
+        if (target.isDefault) {
+            logger.w(TAG, "playlist delete rejected: default playlist cannot be deleted")
+            return
+        }
+        val updated = _playlists.value.filterNot { it.id == playlistId }
+        _playlists.value = updated
+        logger.i(
+            TAG,
+            "playlist deleted id=$playlistId name=\"${target.name}\" " +
+                "trackCount=${target.tracks.size}",
+        )
+        persistPlaylists(updated)
+    }
+
+    /**
+     * Adds [track] to the playlist with [playlistId], at the end.
+     * Adding a track already present (same bvid:cid) is a no-op and
+     * is logged. The stored copy never carries a play URL. An
+     * unknown playlist id is a no-op.
+     */
+    fun addTrackToPlaylist(playlistId: String, track: Track) {
+        val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
+        val stored = track.copy(playUrl = "")
+        if (target.tracks.any { it.key == stored.key }) {
+            logger.i(
+                TAG,
+                "playlist add skipped: already present bvid=${track.id} cid=${track.cid} " +
+                    "playlist=$playlistId",
+            )
+            return
+        }
+        val updated = _playlists.value.map { playlist ->
+            if (playlist.id == playlistId) {
+                playlist.copy(tracks = playlist.tracks + stored)
+            } else {
+                playlist
+            }
+        }
+        _playlists.value = updated
+        logger.i(TAG, "playlist add bvid=${track.id} cid=${track.cid} playlist=$playlistId")
+        persistPlaylists(updated)
+    }
+
+    /**
+     * Removes the track with [trackKey] (bvid:cid) from the playlist
+     * with [playlistId]. An unknown playlist id or a track that is
+     * not in the playlist is a no-op.
+     */
+    fun removeTrackFromPlaylist(playlistId: String, trackKey: String) {
+        val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
+        if (target.tracks.none { it.key == trackKey }) return
+        val updated = _playlists.value.map { playlist ->
+            if (playlist.id == playlistId) {
+                playlist.copy(tracks = playlist.tracks.filterNot { it.key == trackKey })
+            } else {
+                playlist
+            }
+        }
+        _playlists.value = updated
+        logger.i(TAG, "playlist remove key=$trackKey playlist=$playlistId")
+        persistPlaylists(updated)
     }
 
     /** Drops every buffered log line. */
@@ -383,6 +675,7 @@ class SearchViewModel(
 
     override fun onCleared() {
         playJob?.cancel()
+        progressJob?.cancel()
         playerEngine.setListener(null)
         playerEngine.stop()
         playerEngine.release()
@@ -400,7 +693,7 @@ class SearchViewModel(
         logger.i(TAG, "player refetching URL once intent=$intent")
         playJob = viewModelScope.launch {
             try {
-                val stream = repository.fetchPlayUrl(track)
+                val stream = repository.fetchPlayUrl(track, _qualityPreference.value)
                 if (intent != playIntent) return@launch
                 engineIntent = intent
                 engineHasMedia = true
@@ -419,6 +712,72 @@ class SearchViewModel(
         }
     }
 
+    /** The track after the current one in the queue, or null at the end (or with no queue). */
+    private fun trackAfterCurrent(): Track? {
+        val current = _currentTrack.value ?: return null
+        val index = currentQueue.indexOfFirst { it.id == current.id }
+        if (index < 0 || index + 1 >= currentQueue.size) return null
+        return currentQueue[index + 1]
+    }
+
+    /** The track before the current one in the queue, or null at the start (or with no queue). */
+    private fun trackBeforeCurrent(): Track? {
+        val current = _currentTrack.value ?: return null
+        val index = currentQueue.indexOfFirst { it.id == current.id }
+        if (index <= 0) return null
+        return currentQueue[index - 1]
+    }
+
+    /**
+     * The stored list with the default playlist guaranteed present:
+     * a missing or empty stored value bootstraps just the default,
+     * and a stored list without the default gets it prepended.
+     */
+    private fun ensureDefaultPlaylist(stored: List<Playlist>?): List<Playlist> {
+        if (stored.isNullOrEmpty()) return listOf(Playlist.default())
+        if (stored.any { it.isDefault }) return stored
+        return listOf(Playlist.default()) + stored
+    }
+
+    /** Persists [lists] in the background; a failure is logged and swallowed. */
+    private fun persistPlaylists(lists: List<Playlist>) {
+        viewModelScope.launch {
+            runCatching { playlistStore.save(lists) }
+                .onFailure {
+                    logger.w(TAG, "playlist save failed (${it::class.simpleName})")
+                }
+        }
+    }
+
+    /** Starts the progress poll if it is not already running. Only runs while playing. */
+    private fun startProgressPolling() {
+        if (progressJob?.isActive == true) return
+        progressJob = viewModelScope.launch {
+            while (true) {
+                publishProgress()
+                delay(PROGRESS_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopProgressPolling() {
+        progressJob?.cancel()
+        progressJob = null
+    }
+
+    /** One progress sample from the engine, with the track duration as the fallback. */
+    private fun publishProgress() {
+        val position = playerEngine.currentPositionMs().coerceAtLeast(0L)
+        _playbackProgress.value = PlaybackProgress(position, effectiveDurationMs())
+    }
+
+    /** The engine's duration when known, otherwise the current track's duration, otherwise 0. */
+    private fun effectiveDurationMs(): Long {
+        val engineDuration = playerEngine.durationMs()
+        if (engineDuration > 0) return engineDuration
+        return _currentTrack.value?.duration?.inWholeMilliseconds?.coerceAtLeast(0L) ?: 0L
+    }
+
     private fun updateTrackInList(detailed: Track) {
         val state = _searchState.value as? SearchUiState.Success ?: return
         _searchState.value = state.copy(
@@ -429,6 +788,9 @@ class SearchViewModel(
     companion object {
         const val TAG = "Player"
         const val SEARCH_TAG = "Search"
+
+        /** Progress polling cadence while playing. */
+        const val PROGRESS_POLL_INTERVAL_MS: Long = 500L
     }
 }
 
@@ -459,16 +821,24 @@ fun mapSearchError(error: Throwable, query: String): SearchUiState.Error {
 /** Maps a playback failure (detail or play URL resolution) onto the message the player error state shows. */
 fun mapPlayerError(error: Throwable): String = describeFailure(error).first
 
-/** Factory carrying the repository and the player engine into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, and the quality and playlist stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
+    private val qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
+    private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(SearchViewModel::class.java)) {
             "Unknown ViewModel class: ${modelClass.name}"
         }
-        return SearchViewModel(repository, playerEngine) as T
+        return SearchViewModel(
+            repository,
+            playerEngine,
+            MusiqueLog.shared,
+            qualityPreferenceStore,
+            playlistStore,
+        ) as T
     }
 }

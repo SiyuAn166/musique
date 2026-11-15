@@ -24,6 +24,14 @@ object BiliDependencies {
     fun createPlayerEngine(context: Context): PlayerEngine =
         ExoPlayerEngine(context.applicationContext)
 
+    /** The persisted audio quality preference, read by the ViewModel at startup. */
+    fun createQualityPreferenceStore(context: Context): QualityPreferenceStore =
+        DataStoreQualityPreferenceStore(context.applicationContext)
+
+    /** The persisted playlist list, read by the ViewModel at startup. */
+    fun createPlaylistStore(context: Context): PlaylistStore =
+        DataStorePlaylistStore(context.applicationContext)
+
     fun createSearchRepository(context: Context): SearchRepository {
         val appContext = context.applicationContext
         val cookieJar = CookieJar()

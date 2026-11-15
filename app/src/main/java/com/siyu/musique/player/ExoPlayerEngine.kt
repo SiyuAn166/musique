@@ -1,6 +1,7 @@
 package com.siyu.musique.player
 
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -101,6 +102,18 @@ class ExoPlayerEngine(context: Context) : PlayerEngine {
 
     override fun stop() {
         player.stop()
+    }
+
+    override fun seekTo(positionMs: Long) {
+        player.seekTo(positionMs.coerceAtLeast(0L))
+    }
+
+    override fun currentPositionMs(): Long = player.currentPosition.coerceAtLeast(0L)
+
+    override fun durationMs(): Long {
+        val duration = player.duration
+        return if (duration == C.TIME_UNSET) PlayerEngine.UNKNOWN_DURATION
+        else duration.coerceAtLeast(0L)
     }
 
     override fun release() {

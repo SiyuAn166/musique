@@ -56,8 +56,33 @@ interface PlayerEngine {
     /** Stop playback and drop the current item. */
     fun stop()
 
+    /**
+     * Seek within the current item to [positionMs]. Callers clamp to
+     * [0, duration]; engines clamp defensively and ignore seeks with
+     * no item loaded.
+     */
+    fun seekTo(positionMs: Long)
+
+    /**
+     * The current playback position in milliseconds, or 0 when
+     * nothing is loaded.
+     */
+    fun currentPositionMs(): Long
+
+    /**
+     * The current item's duration in milliseconds, or
+     * [UNKNOWN_DURATION] when the engine does not know it yet (the
+     * ViewModel falls back to the track's duration then).
+     */
+    fun durationMs(): Long
+
     /** Release all player resources. The engine must not be used after this. */
     fun release()
+
+    companion object {
+        /** [durationMs] sentinel: the engine does not know the duration yet. */
+        const val UNKNOWN_DURATION: Long = -1L
+    }
 }
 
 /**
@@ -71,5 +96,8 @@ object NoOpPlayerEngine : PlayerEngine {
     override fun pause() = Unit
     override fun resume() = Unit
     override fun stop() = Unit
+    override fun seekTo(positionMs: Long) = Unit
+    override fun currentPositionMs(): Long = 0L
+    override fun durationMs(): Long = PlayerEngine.UNKNOWN_DURATION
     override fun release() = Unit
 }

@@ -1,6 +1,7 @@
 package com.siyu.musique
 
 import com.siyu.musique.model.formatDuration
+import com.siyu.musique.model.formatRemaining
 import com.siyu.musique.model.parseDurationText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -76,6 +77,19 @@ class DurationFormatTest {
     fun `parse and format round-trip`() {
         assertEquals("419:02", formatDuration(parseDurationText("419:2")!!))
         assertEquals("3:48", formatDuration(parseDurationText("3:48")!!))
+    }
+
+    @Test
+    fun `remaining time formats as a negative M SS`() {
+        assertEquals("-2:24", formatRemaining(228.seconds, 84.seconds))
+        assertEquals("-3:48", formatRemaining(228.seconds, 0.seconds))
+    }
+
+    @Test
+    fun `remaining time never goes below negative zero`() {
+        assertEquals("-0:00", formatRemaining(228.seconds, 228.seconds))
+        assertEquals("-0:00", formatRemaining(228.seconds, 300.seconds))
+        assertEquals("-0:00", formatRemaining(0.seconds, 0.seconds))
     }
 
     @Test

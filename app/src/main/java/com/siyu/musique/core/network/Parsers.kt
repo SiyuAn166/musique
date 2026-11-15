@@ -197,15 +197,18 @@ data class WebTicket(
 data class AudioStream(val qualityId: Int, val baseUrl: String, val bandwidth: Long)
 
 /**
- * Audio quality ids in preference order: 192K, 132K, 64K. Dolby
- * (30250) and Hi-Res (30251) need a premium membership and are never
- * picked, even as a fallback.
+ * The first stream matching [preference]'s try order, or null when
+ * none matches. Server order is not trusted: selection is by id,
+ * never by array index. The default is [AudioQuality.BEST], which
+ * tries Hi-Res and Dolby first (they are normally absent
+ * anonymously, so they cost nothing) and falls all the way down to
+ * 64K; explicit preferences fall downward only.
  */
-val AUDIO_QUALITY_PREFERENCE: List<Int> = listOf(30280, 30232, 30216)
-
-/** The first stream matching the preference order, or null when none matches. Server order is not trusted: selection is by id, never by array index. */
-fun pickAudioStream(streams: List<AudioStream>): AudioStream? {
-    for (qualityId in AUDIO_QUALITY_PREFERENCE) {
+fun pickAudioStream(
+    streams: List<AudioStream>,
+    preference: AudioQuality = AudioQuality.BEST,
+): AudioStream? {
+    for (qualityId in preference.tryOrder) {
         streams.firstOrNull { it.qualityId == qualityId }?.let { return it }
     }
     return null
@@ -216,9 +219,9 @@ fun pickAudioStream(streams: List<AudioStream>): AudioStream? {
  * the DASH audio streams; durl, dash.flac, and dash.dolby are ignored.
  * Streams without an id or an empty baseUrl are skipped. Throws
  * [BiliParseException] when dash/audio is missing or empty, or when
- * no stream matches the preference order (e.g. only Dolby/Hi-Res).
+ * no stream matches [preference]'s try order.
  */
-fun parsePlayUrl(data: JsonElement): AudioStream {
+fun parsePlayUrl(data: JsonElement, preference: AudioQuality = AudioQuality.BEST): AudioStream {
     val root = data as? JsonObject ?: throw parseError("Playurl data is not an object", data)
     val dash = root.objectOrNull("dash")
         ?: throw parseError("Playurl data has no dash", data)
@@ -234,9 +237,10 @@ fun parsePlayUrl(data: JsonElement): AudioStream {
             ?: return@mapNotNull null
         AudioStream(id, baseUrl, stream.longOrNull("bandwidth") ?: 0L)
     }
-    return pickAudioStream(streams)
+    return pickAudioStream(streams, preference)
         ?: throw parseError(
-            "Playurl has no playable audio stream (need 30280, 30232, or 30216)",
+            "Playurl has no playable audio stream for quality ${preference.label} " +
+                "(tried ${preference.tryOrder.joinToString()})",
             data,
         )
 }

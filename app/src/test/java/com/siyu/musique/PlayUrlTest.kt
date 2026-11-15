@@ -1,6 +1,7 @@
 package com.siyu.musique
 
 import com.siyu.musique.core.network.ApiService
+import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
 import com.siyu.musique.core.network.BiliClient
 import com.siyu.musique.core.network.BiliParseException
@@ -67,22 +68,25 @@ class PlayUrlTest {
     }
 
     @Test
-    fun `dolby and hi-res are never picked even when alone`() {
+    fun `best picks hi-res first, then dolby, when present`() {
         val streams = listOf(
             AudioStream(30250, "https://cdn.example/dolby", 1),
             AudioStream(30251, "https://cdn.example/hires", 1),
+            AudioStream(30280, "https://cdn.example/192", 1),
         )
-        assertNull(pickAudioStream(streams))
+        assertEquals(30251, pickAudioStream(streams)?.qualityId)
+        assertEquals(30250, pickAudioStream(streams.take(1))?.qualityId)
     }
 
     @Test
-    fun `dolby and hi-res do not shadow a lower playable quality`() {
+    fun `explicit 192K never picks dolby or hi-res, falling downward only`() {
         val streams = listOf(
             AudioStream(30250, "https://cdn.example/dolby", 1),
             AudioStream(30251, "https://cdn.example/hires", 1),
             AudioStream(30216, "https://cdn.example/64", 1),
         )
-        assertEquals(30216, pickAudioStream(streams)?.qualityId)
+        assertEquals(30216, pickAudioStream(streams, AudioQuality.Q192)?.qualityId)
+        assertNull(pickAudioStream(streams.take(2), AudioQuality.Q192))
     }
 
     @Test
@@ -92,14 +96,16 @@ class PlayUrlTest {
     }
 
     @Test
-    fun `parse throws when only dolby and hi-res are present`() {
+    fun `parse throws when only dolby and hi-res are present and 192K is picked`() {
         val data = audioData(stream(30250), stream(30251))
         try {
-            parsePlayUrl(json.parseToJsonElement(data))
+            parsePlayUrl(json.parseToJsonElement(data), AudioQuality.Q192)
             fail("expected BiliParseException")
         } catch (_: BiliParseException) {
-            // expected
+            // expected: an explicit choice never falls upward.
         }
+        // Best accepts them: Hi-Res wins.
+        assertEquals(30251, parsePlayUrl(json.parseToJsonElement(data)).qualityId)
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.siyu.musique
 
 import com.siyu.musique.core.logging.LogBuffer
 import com.siyu.musique.core.logging.MusiqueLogger
+import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
 import com.siyu.musique.core.network.BiliNetworkException
 import com.siyu.musique.data.FakeSearchRepository
@@ -55,6 +56,7 @@ class SearchViewModelStep3Test {
         var playUrlCalls: Int = 0
             private set
         val playUrlTracks = mutableListOf<Track>()
+        val playUrlPreferences = mutableListOf<AudioQuality>()
 
         /** When set, fetchPlayUrl suspends until the gate completes. */
         var playUrlGate: CompletableDeferred<Unit>? = null
@@ -70,9 +72,10 @@ class SearchViewModelStep3Test {
             return detailAnswer(track)
         }
 
-        override suspend fun fetchPlayUrl(track: Track): AudioStream {
+        override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream {
             playUrlCalls++
             playUrlTracks.add(track)
+            playUrlPreferences.add(preference)
             playUrlGate?.await()
             return playUrlAnswers.removeFirst().getOrThrow()
         }
@@ -151,6 +154,9 @@ class SearchViewModelStep3Test {
         assertEquals(1, engine.resumeCalls)
         engine.emitPlaying()
         assertTrue(vm.playerState.value is PlayerUiState.Playing)
+        // Stop polling before the test ends: runTest never finishes
+        // while the 500ms poll loop is still scheduled.
+        engine.emitPaused()
     }
 
     @Test
