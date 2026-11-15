@@ -58,9 +58,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 private const val LOAD_MORE_THRESHOLD = 3
 
 /**
- * Search screen: no title, just the list icon (playlists) and
- * three-dot icon (settings menu, with the debug log inside) at
- * the top right, a light-grey rounded
+ * Search screen: no title, just the three-dot icon (settings
+ * menu, with the debug log inside) at the top right, a light-grey
+ * rounded
  * search field, and flat result rows with hairline dividers. Search
  * triggers on the keyboard search action and on tapping the
  * magnifier icon. Tapping a row plays it (cid fill + fresh play URL
@@ -74,7 +74,6 @@ private const val LOAD_MORE_THRESHOLD = 3
 fun SearchScreen(
     viewModel: SearchViewModel,
     onOpenPlayer: () -> Unit,
-    onOpenPlaylists: () -> Unit,
     onOpenPlaylistDetail: (String) -> Unit = {},
     onOpenLog: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -109,20 +108,6 @@ fun SearchScreen(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onOpenPlayer) {
-                Icon(
-                    imageVector = MusiqueIcons.QueueMusic,
-                    contentDescription = "Player",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            IconButton(onClick = onOpenPlaylists) {
-                Icon(
-                    imageVector = MusiqueIcons.ListBulleted,
-                    contentDescription = "Playlists",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
             Box {
                 IconButton(onClick = { settingsMenuExpanded = true }) {
                     Icon(

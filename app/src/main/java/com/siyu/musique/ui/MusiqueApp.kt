@@ -76,7 +76,6 @@ fun MusiqueApp(
                 SearchScreen(
                     viewModel = viewModel,
                     onOpenPlayer = { navController.navigate("player") },
-                    onOpenPlaylists = { navController.navigate("playlists") },
                     onOpenPlaylistDetail = { playlistId ->
                         navController.navigate("playlist/$playlistId")
                     },
