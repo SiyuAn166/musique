@@ -28,6 +28,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Files uploaded through the GitHub website lose their executable
+      # bit, so gradlew arrives non-executable and CI fails with
+      # "Permission denied" (run #1). Make it executable first.
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
