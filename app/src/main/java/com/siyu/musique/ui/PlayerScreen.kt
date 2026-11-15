@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,11 +23,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,12 +62,14 @@ import kotlin.time.Duration.Companion.milliseconds
  * elapsed time left and remaining (negative) time right, black
  * skip icons around one large black pause circle, a full-width
  * slim volume slider with speaker icons at both ends, and the
- * quality chip alone at the bottom right. The controls row is
- * shuffle, skip-previous, the pause circle, skip-next, repeat:
- * the shuffle and repeat buttons are grey when off and black
- * when on, and the repeat button cycles off, repeat all,
- * repeat one. Sections are spread out with generous gaps instead
- * of crammed together. Dragging
+ * quality chip at the bottom right, with the queue button at
+ * the bottom left: it opens a sheet listing the playing queue,
+ * the current track highlighted, tapping a row jumps to it.
+ * The controls row is shuffle, skip-previous, the pause circle,
+ * skip-next, repeat: the shuffle and repeat buttons are grey
+ * when off and black when on, and the repeat button cycles
+ * off, repeat all, repeat one. Sections are spread out with
+ * generous gaps instead of crammed together. Dragging
  * the progress bar shows the dragged position and seeks on
  * release; the polled progress keeps running underneath.
  * Dragging the page down past the threshold goes back, like the
@@ -83,12 +90,16 @@ fun PlayerScreen(
     val volume by viewModel.volume.collectAsStateWithLifecycle()
     val repeatMode by viewModel.repeatMode.collectAsStateWithLifecycle()
     val shuffleEnabled by viewModel.shuffleEnabled.collectAsStateWithLifecycle()
+    val queue by viewModel.queue.collectAsStateWithLifecycle()
 
     /** The dragged position while the user holds the slider, or null when not dragging. */
     var dragPositionMs by remember { mutableStateOf<Long?>(null) }
 
     /** Whether the quality dropdown menu is open. */
     var qualityMenuExpanded by remember { mutableStateOf(false) }
+
+    /** Whether the playing queue sheet is open. */
+    var queueSheetOpen by remember { mutableStateOf(false) }
 
     /** Downward drag past this distance goes back. */
     val dismissThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
@@ -327,8 +338,17 @@ fun PlayerScreen(
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconButton(onClick = { queueSheetOpen = true }) {
+                    Icon(
+                        imageVector = MusiqueIcons.QueueMusic,
+                        contentDescription = "Queue",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
                 Box {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -373,6 +393,57 @@ fun PlayerScreen(
                                         )
                                     }
                                 },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Playing queue: the whole queue in order, the current
+        // track highlighted, tapping a row jumps to it (tapping
+        // the loaded track does nothing, same as everywhere).
+        if (queueSheetOpen) {
+            ModalBottomSheet(
+                onDismissRequest = { queueSheetOpen = false },
+                sheetState = rememberModalBottomSheetState(),
+            ) {
+                LazyColumn(
+                    modifier = Modifier.padding(bottom = 32.dp),
+                ) {
+                    item {
+                        Text(
+                            text = "Queue",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 8.dp,
+                                bottom = 8.dp,
+                            ),
+                        )
+                    }
+                    itemsIndexed(queue, key = { _, row -> row.key }) { index, row ->
+                        SongRow(
+                            track = row,
+                            // Parts share one video id, so match by
+                            // key; a row whose cid is still empty
+                            // falls back to the video id.
+                            isCurrent = row.key == track?.key ||
+                                (row.cid.isEmpty() && row.id == track?.id),
+                            onClick = {
+                                viewModel.playFromQueue(row)
+                                queueSheetOpen = false
+                            },
+                            trailing = {},
+                        )
+                        if (index < queue.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(
+                                    start = SONG_ROW_DIVIDER_START_DP.dp,
+                                ),
+                                color = MaterialTheme.colorScheme.outlineVariant,
                             )
                         }
                     }

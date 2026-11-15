@@ -215,8 +215,20 @@ class SearchViewModel(
     /**
      * The queue prev/next/auto-advance move inside: a snapshot of the
      * search list or playlist the current track was played from.
+     * Mirrored in [_queue] for the queue sheet; every adoption goes
+     * through [updateQueue] so the two never drift apart.
      */
     private var currentQueue: List<Track> = emptyList()
+
+    /** The playing queue, for the queue sheet on the player page. */
+    private val _queue = MutableStateFlow<List<Track>>(emptyList())
+    val queue: StateFlow<List<Track>> = _queue.asStateFlow()
+
+    /** Adopts [newQueue] as the queue, in both the field and the exposed flow. */
+    private fun updateQueue(newQueue: List<Track>) {
+        currentQueue = newQueue
+        _queue.value = newQueue
+    }
 
     /**
      * Tracks played before the current one, newest last, recorded
@@ -279,7 +291,7 @@ class SearchViewModel(
                 val current = restored.queue.firstOrNull { it.key == restored.currentKey }
                 if (current != null) {
                     val duration = current.duration.inWholeMilliseconds.coerceAtLeast(0L)
-                    currentQueue = restored.queue
+                    updateQueue(restored.queue)
                     _currentTrack.value = current
                     _playbackProgress.value = PlaybackProgress(
                         restored.positionMs.coerceIn(0L, duration),
@@ -496,9 +508,23 @@ class SearchViewModel(
             logger.i(TAG, "play ignored: already current bvid=${track.id} cid=${track.cid}")
             return
         }
-        currentQueue = playlist.tracks
+        updateQueue(playlist.tracks)
         shuffleHistory.clear()
         playAt(track, startPositionMs = 0L, resumePlaying = true)
+    }
+
+    /**
+     * Play [track] from the queue sheet: the track must already be
+     * in the queue, which is left untouched. Tapping the loaded
+     * track is a no-op, same as [play].
+     */
+    fun playFromQueue(track: Track) {
+        logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid} queue")
+        if (isCurrentTrack(track)) {
+            logger.i(TAG, "play ignored: already current bvid=${track.id} cid=${track.cid}")
+            return
+        }
+        playKeepingQueue(track)
     }
 
     /**
@@ -557,7 +583,7 @@ class SearchViewModel(
     private fun adoptSearchQueueFor(track: Track) {
         val state = _searchState.value as? SearchUiState.Success ?: return
         if (state.tracks.any { it.id == track.id }) {
-            currentQueue = state.tracks
+            updateQueue(state.tracks)
             shuffleHistory.clear()
         }
     }
@@ -611,7 +637,7 @@ class SearchViewModel(
                     if (intent != playIntent) return@launch
                     updateTrackInList(detailed.track)
                     if (adoptPartsQueue && detailed.parts.size > 1) {
-                        currentQueue = detailed.parts
+                        updateQueue(detailed.parts)
                         shuffleHistory.clear()
                         current = detailed.parts[0]
                     } else {
