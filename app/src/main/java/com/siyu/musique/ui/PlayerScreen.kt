@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -42,12 +43,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -55,6 +56,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -67,6 +69,7 @@ import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
 import com.siyu.musique.model.formatRemaining
 import com.siyu.musique.ui.theme.MusiqueIcons
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -173,13 +176,18 @@ fun PlayerScreen(
 
     val track = currentTrack
 
+    // The close callback as seen by the drag detector: reading
+    // it through updated state keeps the gesture block from
+    // restarting when the parent recomposes mid-drag.
+    val currentOnClose by rememberUpdatedState(onClose)
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .onSizeChanged { pageHeightPx = it.height }
-            .pointerInput(onClose, dismissThresholdPx) {
+            .pointerInput(dismissThresholdPx) {
                 var dragged = 0f
                 val velocityTracker = VelocityTracker()
                 detectVerticalDragGestures(
@@ -197,7 +205,7 @@ fun PlayerScreen(
                                 flingVelocity > DISMISS_FLING_VELOCITY_PX_PER_SECOND
                             ) {
                                 dismissOffset.animateTo(pageHeightPx.toFloat(), spring())
-                                onClose()
+                                currentOnClose()
                             } else {
                                 dismissOffset.animateTo(0f, spring())
                             }
@@ -213,7 +221,11 @@ fun PlayerScreen(
                     },
                 )
             }
-            .graphicsLayer { translationY = dismissOffset.value }
+            // A layout offset, not a graphics-layer translation:
+            // the page is placed lower in the layout, so the
+            // area it vacates is genuinely empty and the tab
+            // content underneath shows through.
+            .offset { IntOffset(0, dismissOffset.value.roundToInt()) }
             .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

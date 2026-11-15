@@ -154,9 +154,14 @@ fun MusiqueApp(
     // through the translucent panel.
     var playerDragging by remember { mutableStateOf(false) }
 
-    val closePlayer = {
-        playerOpen = false
-        playerDragging = false
+    // A stable close callback: PlayerScreen keys its drag
+    // detector on this lambda, so recreating it on every
+    // recomposition would restart the gesture mid-drag.
+    val closePlayer = remember {
+        {
+            playerOpen = false
+            playerDragging = false
+        }
     }
 
     val showTabs = currentRoute in TAB_ROUTES && (!playerOpen || playerDragging)
