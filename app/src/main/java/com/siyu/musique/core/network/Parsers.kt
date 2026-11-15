@@ -1,0 +1,186 @@
+package com.siyu.musique.core.network
+
+import com.siyu.musique.model.Track
+import com.siyu.musique.model.parseDurationText
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
+
+/**
+ * Pure parsers for the Bilibili responses Step 1 uses. Every field
+ * name here was confirmed by a live probe (Nov 14, 2026) or the Nov 9
+ * smoke-test reports; nothing is guessed. Parsers take the envelope's
+ * data element, never the raw body.
+ */
+
+private fun JsonObject.stringOrNull(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun JsonObject.objectOrNull(key: String): JsonObject? =
+    (this[key] as? JsonObject)
+
+private fun JsonObject.arrayOrNull(key: String): JsonArray? =
+    (this[key] as? JsonArray)
+
+/** A JSON number or numeric string, read through [JsonPrimitive.content] to keep full precision. */
+private fun JsonObject.contentOrNull(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun JsonObject.longOrNull(key: String): Long? =
+    (this[key] as? JsonPrimitive)?.longOrNull
+
+private fun parseError(what: String, data: JsonElement): BiliParseException =
+    BiliParseException(what, preview = data.toString().take(BiliClient.PREVIEW_LENGTH))
+
+/**
+ * Search results: data.result is an array of {result_type, data}
+ * groups; only result_type "video" is kept in v0.1. Video items carry
+ * bvid, title (with <em> highlight tags), author, pic (starting with
+ * //), and duration as total-minutes text ("419:2"). Items without a
+ * bvid are skipped, never fatal.
+ */
+fun parseSearchResults(data: JsonElement): List<Track> {
+    val root = data as? JsonObject ?: throw parseError("Search data is not an object", data)
+    val groups = root.arrayOrNull("result")
+        ?: throw parseError("Search data has no result array", data)
+    val tracks = mutableListOf<Track>()
+    for (group in groups) {
+        val groupObj = group as? JsonObject ?: continue
+        if (groupObj.stringOrNull("result_type") != "video") continue
+        val items = groupObj.arrayOrNull("data") ?: continue
+        for (item in items) {
+            val video = item as? JsonObject ?: continue
+            val bvid = video.stringOrNull("bvid")?.takeIf { it.isNotEmpty() } ?: continue
+            val title = cleanSearchTitle(video.stringOrNull("title") ?: "")
+            val artist = video.stringOrNull("author")
+                ?: video.stringOrNull("uname")
+                ?: ""
+            val cover = normalizeCover(video.stringOrNull("pic") ?: "")
+            val duration = video.stringOrNull("duration")?.let(::parseDurationText)
+                ?: Duration.ZERO
+            tracks.add(
+                Track(
+                    id = bvid,
+                    cid = "",
+                    title = title,
+                    artist = artist,
+                    cover = cover,
+                    duration = duration,
+                ),
+            )
+        }
+    }
+    return tracks
+}
+
+/** Covers starting with // get an https: prefix; anything else passes through. */
+fun normalizeCover(pic: String): String = when {
+    pic.startsWith("//") -> "https:$pic"
+    else -> pic
+}
+
+/**
+ * Video details from /x/web-interface/wbi/view: title, owner.name,
+ * pic, and pages[0] (cid, duration in seconds). When pages is empty,
+ * the top-level cid and duration fields are the fallback.
+ */
+fun parseViewDetail(data: JsonElement, bvid: String): Track {
+    val root = data as? JsonObject ?: throw parseError("View data is not an object", data)
+    val title = root.stringOrNull("title") ?: bvid
+    val artist = root.objectOrNull("owner")?.stringOrNull("name") ?: ""
+    val cover = normalizeCover(root.stringOrNull("pic") ?: "")
+    val pages = root.arrayOrNull("pages")
+    val firstPage = pages?.firstOrNull() as? JsonObject
+    val cid = firstPage?.contentOrNull("cid")
+        ?: root.contentOrNull("cid")
+        ?: throw parseError("View data has no cid", data)
+    val durationSeconds = firstPage?.longOrNull("duration")
+        ?: root.longOrNull("duration")
+        ?: 0L
+    return Track(
+        id = bvid,
+        cid = cid,
+        title = title,
+        artist = artist,
+        cover = cover,
+        duration = durationSeconds.coerceAtLeast(0L).seconds,
+    )
+}
+
+/** One pagelist entry: cid, part name, duration in seconds. */
+data class PagelistEntry(val cid: String, val part: String, val duration: Duration)
+
+/**
+ * Pagelist fallback: data is an array of parts; the first part's cid
+ * is the one Step 1 needs. Used only when wbi/view fails.
+ */
+fun parsePagelist(data: JsonElement): PagelistEntry {
+    val parts = data as? JsonArray ?: throw parseError("Pagelist data is not an array", data)
+    val first = parts.firstOrNull() as? JsonObject
+        ?: throw parseError("Pagelist is empty", data)
+    val cid = first.contentOrNull("cid")
+        ?: throw parseError("Pagelist entry has no cid", data)
+    return PagelistEntry(
+        cid = cid,
+        part = first.stringOrNull("part") ?: "",
+        duration = (first.longOrNull("duration") ?: 0L).coerceAtLeast(0L).seconds,
+    )
+}
+
+/**
+ * WBI keys from /x/web-interface/nav: data.wbi_img holds img_url and
+ * sub_url; the key is the filename without the extension. nav answers
+ * code -101 anonymously, so callers must allow that code.
+ */
+fun parseNavKeys(data: JsonElement): WbiKeyStore.WbiKeys {
+    val root = data as? JsonObject ?: throw parseError("Nav data is not an object", data)
+    val wbiImg = root.objectOrNull("wbi_img")
+        ?: throw parseError("Nav data has no wbi_img", data)
+    val imgUrl = wbiImg.stringOrNull("img_url")
+        ?: throw parseError("Nav wbi_img has no img_url", data)
+    val subUrl = wbiImg.stringOrNull("sub_url")
+        ?: throw parseError("Nav wbi_img has no sub_url", data)
+    return WbiKeyStore.WbiKeys(
+        imgKey = WbiSigner.keyFromImageUrl(imgUrl),
+        subKey = WbiSigner.keyFromImageUrl(subUrl),
+    )
+}
+
+/** finger/spi: data holds b_3 (buvid3) and b_4 (buvid4). */
+fun parseFingerSpi(data: JsonElement): Pair<String, String> {
+    val root = data as? JsonObject ?: throw parseError("finger/spi data is not an object", data)
+    val b3 = root.stringOrNull("b_3")
+        ?: throw parseError("finger/spi data has no b_3", data)
+    val b4 = root.stringOrNull("b_4")
+        ?: throw parseError("finger/spi data has no b_4", data)
+    return b3 to b4
+}
+
+/** GenWebTicket result: the JWT ticket, its ttl, and the nav WBI image URLs. */
+data class WebTicket(
+    val ticket: String,
+    val ttlSeconds: Long,
+    val createdAtSeconds: Long,
+    val navImgUrl: String?,
+    val navSubUrl: String?,
+)
+
+/** GenWebTicket: data.ticket, data.ttl, data.created_at, data.nav {img, sub}. */
+fun parseWebTicket(data: JsonElement): WebTicket {
+    val root = data as? JsonObject ?: throw parseError("GenWebTicket data is not an object", data)
+    val ticket = root.stringOrNull("ticket")
+        ?: throw parseError("GenWebTicket data has no ticket", data)
+    val nav = root.objectOrNull("nav")
+    return WebTicket(
+        ticket = ticket,
+        ttlSeconds = root.longOrNull("ttl") ?: 259200L,
+        createdAtSeconds = root.longOrNull("created_at") ?: 0L,
+        navImgUrl = nav?.stringOrNull("img"),
+        navSubUrl = nav?.stringOrNull("sub"),
+    )
+}
