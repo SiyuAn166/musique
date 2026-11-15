@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -60,8 +59,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * slim volume slider with speaker icons at both ends, and the
  * quality chip alone at the bottom right. The controls row is
  * shuffle, skip-previous, the pause circle, skip-next, repeat:
- * the shuffle and repeat buttons carry a small dot underneath
- * when active, and the repeat button cycles off, repeat all,
+ * the shuffle and repeat buttons are grey when off and black
+ * when on, and the repeat button cycles off, repeat all,
  * repeat one. Sections are spread out with generous gaps instead
  * of crammed together. Dragging
  * the progress bar shows the dragged position and seeks on
@@ -385,9 +384,8 @@ fun PlayerScreen(
 
 /**
  * A small mode button in the controls row (shuffle, repeat): a
- * grey icon when off, black with a small dot underneath when on.
- * The dot keeps its place when inactive (transparent) so the row
- * never shifts as modes change.
+ * grey icon when off, black when on. The tint change alone marks
+ * the state; no dot underneath.
  */
 @Composable
 private fun ModeButton(
@@ -396,32 +394,16 @@ private fun ModeButton(
     active: Boolean,
     onClick: () -> Unit,
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        IconButton(onClick = onClick) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = if (active) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.size(28.dp),
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(4.dp)
-                .background(
-                    if (active) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        Color.Transparent
-                    },
-                    CircleShape,
-                ),
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (active) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.size(28.dp),
         )
     }
 }
