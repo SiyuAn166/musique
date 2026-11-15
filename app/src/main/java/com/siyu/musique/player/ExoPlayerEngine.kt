@@ -106,8 +106,12 @@ class ExoPlayerEngine(
             // key are already stored before the stream starts. The key
             // holds bvid + cid + quality only, never the URL. Local
             // files skip the cache entirely, so there is nothing to
-            // measure for them.
-            val cachedBytes = cache.getCachedLength(cacheKey, 0L, Long.MAX_VALUE)
+            // measure for them. getCachedBytes (total bytes) is the
+            // right call here: getCachedLength returns the length of
+            // the continuous cached run, or a NEGATIVE hole length
+            // when position 0 is not cached at all, which printed
+            // -9223372036854775807 for every uncached track.
+            val cachedBytes = cache.getCachedBytes(cacheKey, 0L, Long.MAX_VALUE)
             MusiqueLog.i(TAG, "audio cache $cachedBytes bytes stored key=$cacheKey")
         }
         val metadataBuilder = MediaMetadata.Builder()

@@ -11,9 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
@@ -21,12 +22,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import android.os.SystemClock
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -120,6 +128,25 @@ fun MusiqueApp(
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
     val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
 
+    // Guard against the keyboard's dismiss tap falling through
+    // to the tab bar: when the keyboard window vanishes on
+    // touch-down, the system re-delivers the gesture to the app
+    // window below, and the Home tab sits exactly under the
+    // dismiss chevron. Lifting the tab bar above the keyboard
+    // does not help, because the bar snaps back down the moment
+    // the keyboard hides. So tab taps are ignored while the
+    // keyboard is visible and briefly after it hides; the
+    // keyboard keeps covering the tab bar, as before.
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    var imeHiddenAtMs by remember { mutableLongStateOf(0L) }
+    var wasImeVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(imeVisible) {
+        if (wasImeVisible && !imeVisible) {
+            imeHiddenAtMs = SystemClock.uptimeMillis()
+        }
+        wasImeVisible = imeVisible
+    }
+
     MusiqueTheme {
         // The Surface paints the white background: without it the
         // screens are transparent and the window background shows
@@ -128,16 +155,7 @@ fun MusiqueApp(
             color = MaterialTheme.colorScheme.background,
             modifier = modifier.fillMaxSize(),
         ) {
-            // imePadding lifts the mini bar and tab bar above
-            // the keyboard while it is open. Without it they
-            // sit under the IME window, and a tap on the
-            // keyboard's dismiss strip can fall through to the
-            // Home tab underneath.
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding(),
-            ) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Box(modifier = Modifier.weight(1f)) {
                     NavHost(
                         navController = navController,
@@ -247,6 +265,19 @@ fun MusiqueApp(
                                     .selectable(
                                         selected = selected,
                                         onClick = {
+                                            // A tab tap that lands
+                                            // while the keyboard is
+                                            // up, or within a beat
+                                            // of it hiding, is the
+                                            // keyboard's dismiss tap
+                                            // falling through, not
+                                            // a real tab tap.
+                                            if (imeVisible ||
+                                                SystemClock.uptimeMillis() - imeHiddenAtMs <
+                                                    IME_HIDE_TAP_GUARD_MS
+                                            ) {
+                                                return@selectable
+                                            }
                                             navController.navigate(item.route) {
                                                 // One copy of each
                                                 // tab, with its state
@@ -290,6 +321,9 @@ fun MusiqueApp(
 
 /** The height of the bottom tab row: shorter than the 80dp Material default. */
 private const val TAB_BAR_HEIGHT_DP: Int = 56
+
+/** Tab taps are ignored for this long after the keyboard hides, so a dismiss tap falling through cannot switch tabs. */
+private const val IME_HIDE_TAP_GUARD_MS: Long = 300L
 
 /** One bottom tab: its route, label, and icon. */
 private data class TabItem(val route: String, val label: String, val icon: ImageVector)
