@@ -58,6 +58,7 @@ fun PlaylistDetailScreen(
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
+    val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
 
     val playlist = playlists.firstOrNull { it.id == playlistId }
 
@@ -246,6 +247,9 @@ fun PlaylistDetailScreen(
                 onTogglePlayPause = { viewModel.togglePlayPause() },
                 onRetry = { viewModel.retryPlayback() },
                 onOpenPlayer = onOpenPlayer,
+                onPrevious = { viewModel.playPrevious() },
+                onNext = { viewModel.playNext() },
+                qualityLabel = resolvedQualityLabel,
             )
         }
     }

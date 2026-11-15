@@ -1,7 +1,6 @@
 package com.siyu.musique.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,17 +9,17 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -67,6 +67,7 @@ fun PlaylistsScreen(
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
+    val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
@@ -107,17 +108,11 @@ fun PlaylistsScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         LazyColumn(modifier = Modifier.weight(1f)) {
-            itemsIndexed(playlists, key = { _, playlist -> playlist.id }) { index, playlist ->
+            items(playlists, key = { playlist -> playlist.id }) { playlist ->
                 PlaylistRow(
                     playlist = playlist,
                     onClick = { onOpenDetail(playlist.id) },
                 )
-                if (index < playlists.lastIndex) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 92.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                    )
-                }
             }
         }
 
@@ -129,6 +124,9 @@ fun PlaylistsScreen(
             onTogglePlayPause = { viewModel.togglePlayPause() },
             onRetry = { viewModel.retryPlayback() },
             onOpenPlayer = onOpenPlayer,
+            onPrevious = { viewModel.playPrevious() },
+            onNext = { viewModel.playNext() },
+            qualityLabel = resolvedQualityLabel,
         )
     }
 
@@ -173,74 +171,88 @@ fun PlaylistsScreen(
     }
 }
 
+/**
+ * One playlist as a card: a light-grey card with a single square
+ * cover, the name, and the song count. Tapping the card opens the
+ * playlist. Shared by the home playlists section and the Playlists
+ * screen.
+ */
 @Composable
 internal fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    Card(
+        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
-        StackedCovers(playlist)
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = playlist.name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = songCountLabel(playlist.trackCount),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PlaylistCover(playlist)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = songCountLabel(playlist.trackCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Icon(
-            imageVector = MusiqueIcons.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
 /**
- * The stacked-covers thumbnail: up to three of the first tracks'
- * covers, offset down and right so they read as a stack, the first
- * track's cover on top. A playlist with no covers gets a plain grey
- * square.
+ * The playlist cover: the first track's cover, or a grey square
+ * with a queue icon when the playlist has no covers yet.
  */
 @Composable
-private fun StackedCovers(
+private fun PlaylistCover(
     playlist: Playlist,
     modifier: Modifier = Modifier,
 ) {
-    val covers = playlist.tracks.mapNotNull { it.cover.ifEmpty { null } }.take(3)
-    Box(modifier = modifier.size(64.dp)) {
-        if (covers.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+    val cover = playlist.tracks.firstNotNullOfOrNull { it.cover.ifEmpty { null } }
+    if (cover != null) {
+        AsyncImage(
+            model = cover,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp)),
+        )
+    } else {
+        Box(
+            modifier = modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.outlineVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = MusiqueIcons.QueueMusic,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
             )
-        } else {
-            covers.indices.reversed().forEach { index ->
-                AsyncImage(
-                    model = covers[index],
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .offset((index * 8).dp, (index * 8).dp)
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(6.dp)),
-                )
-            }
         }
     }
 }

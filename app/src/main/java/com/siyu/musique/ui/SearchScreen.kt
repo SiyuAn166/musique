@@ -1,7 +1,6 @@
 package com.siyu.musique.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -58,10 +58,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.model.Track
 import com.siyu.musique.ui.theme.MusiqueIcons
+import com.siyu.musique.ui.theme.MusiqueScriptFamily
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -77,10 +79,10 @@ private const val ADD_NOTICE_DURATION_MS: Long = 2000L
 private const val ADD_NOTICE_BOTTOM_OFFSET_DP: Int = 88
 
 /**
- * Search screen: no title, just the three-dot icon (settings
- * menu, with the debug log inside) at the top right, a light-grey
- * rounded
- * search field, and flat result rows with hairline dividers. Search
+ * Search screen: the script "Musique" wordmark at the top left
+ * with the three-dot icon (settings menu, with the debug log
+ * inside) at the top right, a light-grey capsule search field,
+ * and flat result rows with hairline dividers. Search
  * triggers on the keyboard search action and on tapping the
  * magnifier icon. Typing shows a suggestion dropdown from
  * Bilibili's suggest API under the field; tapping a suggestion
@@ -109,6 +111,7 @@ fun SearchScreen(
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
+    val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
 
@@ -146,9 +149,15 @@ fun SearchScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 8.dp, top = 8.dp),
-            horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(
+                text = "Musique",
+                fontFamily = MusiqueScriptFamily,
+                fontSize = 40.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
             Box {
                 IconButton(onClick = { settingsMenuExpanded = true }) {
                     Icon(
@@ -205,7 +214,7 @@ fun SearchScreen(
                 }
             },
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(50.dp),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -309,17 +318,11 @@ fun SearchScreen(
                             }
                         }
                     }
-                    itemsIndexed(playlists, key = { _, playlist -> playlist.id }) { index, playlist ->
+                    items(playlists, key = { playlist -> playlist.id }) { playlist ->
                         PlaylistRow(
                             playlist = playlist,
                             onClick = { onOpenPlaylistDetail(playlist.id) },
                         )
-                        if (index < playlists.lastIndex) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 92.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
-                        }
                     }
                 }
             }
@@ -469,6 +472,9 @@ fun SearchScreen(
             onTogglePlayPause = { viewModel.togglePlayPause() },
             onRetry = { viewModel.retryPlayback() },
             onOpenPlayer = onOpenPlayer,
+            onPrevious = { viewModel.playPrevious() },
+            onNext = { viewModel.playNext() },
+            qualityLabel = resolvedQualityLabel,
         )
     }
 

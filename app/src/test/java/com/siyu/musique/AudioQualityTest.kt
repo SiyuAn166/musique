@@ -89,6 +89,16 @@ class AudioQualityTest {
     }
 
     @Test
+    fun `stream ids map to badge labels and unknown ids map to null`() {
+        assertEquals("64K", AudioQuality.labelForStreamId(30216))
+        assertEquals("132K", AudioQuality.labelForStreamId(30232))
+        assertEquals("192K", AudioQuality.labelForStreamId(30280))
+        assertEquals("Dolby", AudioQuality.labelForStreamId(30250))
+        assertEquals("Hi-Res", AudioQuality.labelForStreamId(30251))
+        assertNull(AudioQuality.labelForStreamId(99999))
+    }
+
+    @Test
     fun `stored names round-trip and unknown names mean best`() {
         for (quality in AudioQuality.entries) {
             assertEquals(quality, AudioQuality.fromStoredName(quality.name))

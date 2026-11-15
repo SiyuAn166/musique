@@ -36,5 +36,15 @@ enum class AudioQuality(
         /** The stored enum name back to a preference; null or unknown names mean [BEST]. */
         fun fromStoredName(name: String?): AudioQuality =
             entries.firstOrNull { it.name == name } ?: BEST
+
+        /** The badge label for a resolved DASH stream id, or null when the id is unknown. */
+        fun labelForStreamId(id: Int): String? = when (id) {
+            30216 -> "64K"
+            30232 -> "132K"
+            30280 -> "192K"
+            30250 -> "Dolby"
+            30251 -> "Hi-Res"
+            else -> null
+        }
     }
 }

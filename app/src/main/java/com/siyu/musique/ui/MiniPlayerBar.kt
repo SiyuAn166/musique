@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,12 +35,14 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 
 /**
  * Slim floating mini player bar: a white card with a small square
- * cover, title/artist, a play/pause icon button, and a thin progress
- * hairline along the bottom edge driven by [progress]. Tapping the
- * bar (not the button) opens the player page; the error state shows
- * a retry icon button instead of play/pause. The second line names
- * the player state while loading, paused, or failed; otherwise it
- * shows the artist and duration.
+ * cover, title/artist, previous/play-pause/next icon buttons, and
+ * a thin progress hairline along the bottom edge driven by
+ * [progress]. A resolved quality label ("192K", "Hi-Res") shows as
+ * a small black badge before the title when [qualityLabel] is not
+ * null. Tapping the bar (not the buttons) opens the player page;
+ * the error state shows a retry icon button instead of the
+ * controls. The second line names the player state while loading,
+ * paused, or failed; otherwise it shows the artist and duration.
  */
 @Composable
 fun MiniPlayerBar(
@@ -50,6 +53,9 @@ fun MiniPlayerBar(
     onTogglePlayPause: () -> Unit,
     onRetry: () -> Unit,
     onOpenPlayer: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    qualityLabel: String?,
     modifier: Modifier = Modifier,
 ) {
     val statusLine = if (track == null) {
@@ -111,12 +117,35 @@ fun MiniPlayerBar(
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = track?.title ?: "Musique",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (qualityLabel != null) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                shape = RoundedCornerShape(4.dp),
+                            ) {
+                                Text(
+                                    text = qualityLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier.padding(
+                                        horizontal = 4.dp,
+                                        vertical = 2.dp,
+                                    ),
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text(
+                            text = track?.title ?: "Musique",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     Text(
                         text = statusLine,
                         style = MaterialTheme.typography.bodySmall,
@@ -124,7 +153,7 @@ fun MiniPlayerBar(
                         maxLines = 1,
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 if (playerState is PlayerUiState.Error) {
                     IconButton(onClick = onRetry) {
                         Icon(
@@ -134,6 +163,22 @@ fun MiniPlayerBar(
                         )
                     }
                 } else {
+                    val controlTint = if (track != null) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    }
+                    IconButton(
+                        onClick = onPrevious,
+                        enabled = track != null,
+                    ) {
+                        Icon(
+                            imageVector = MusiqueIcons.SkipPrevious,
+                            contentDescription = "Previous",
+                            tint = controlTint,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
                     IconButton(
                         onClick = onTogglePlayPause,
                         enabled = track != null,
@@ -145,12 +190,19 @@ fun MiniPlayerBar(
                                 MusiqueIcons.PlayArrow
                             },
                             contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = if (track != null) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            },
+                            tint = controlTint,
                             modifier = Modifier.size(28.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = onNext,
+                        enabled = track != null,
+                    ) {
+                        Icon(
+                            imageVector = MusiqueIcons.SkipNext,
+                            contentDescription = "Next",
+                            tint = controlTint,
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                 }

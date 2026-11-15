@@ -185,6 +185,10 @@ class SearchViewModel(
     private val _qualityPreference = MutableStateFlow(AudioQuality.BEST)
     val qualityPreference: StateFlow<AudioQuality> = _qualityPreference.asStateFlow()
 
+    /** Label of the resolved stream for the current track ("192K", "Hi-Res"), null before resolve. */
+    private val _resolvedQualityLabel = MutableStateFlow<String?>(null)
+    val resolvedQualityLabel: StateFlow<String?> = _resolvedQualityLabel.asStateFlow()
+
     private val _repeatMode = MutableStateFlow(RepeatMode.OFF)
     val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
 
@@ -731,6 +735,7 @@ class SearchViewModel(
         playIntent++
         val intent = playIntent
         refetchedForIntent = false
+        _resolvedQualityLabel.value = null
         playJob?.cancel()
         try {
             playerEngine.stop()
@@ -777,6 +782,7 @@ class SearchViewModel(
                 }
                 val stream = repository.fetchPlayUrl(current, _qualityPreference.value)
                 if (intent != playIntent) return@launch
+                _resolvedQualityLabel.value = AudioQuality.labelForStreamId(stream.qualityId)
                 _currentTrack.value = current.copy(playUrl = stream.baseUrl)
                 engineIntent = intent
                 engineHasMedia = true
@@ -1180,6 +1186,7 @@ class SearchViewModel(
             try {
                 val stream = repository.fetchPlayUrl(track, _qualityPreference.value)
                 if (intent != playIntent) return@launch
+                _resolvedQualityLabel.value = AudioQuality.labelForStreamId(stream.qualityId)
                 engineIntent = intent
                 engineHasMedia = true
                 playerEngine.play(

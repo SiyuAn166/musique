@@ -113,6 +113,17 @@ class SearchViewModelStep3Test {
         }
 
     @Test
+    fun `play exposes the resolved quality label once the URL resolves`() =
+        runTest(testDispatcher) {
+            val engine = FakePlayerEngine()
+            val vm = viewModel(ScriptedRepository(), engine)
+            assertEquals(null, vm.resolvedQualityLabel.value)
+            vm.play(track())
+            advanceUntilIdle()
+            assertEquals("192K", vm.resolvedQualityLabel.value)
+        }
+
+    @Test
     fun `play fills an empty cid from details before resolving the URL`() = runTest(testDispatcher) {
         val repository = ScriptedRepository()
         val engine = FakePlayerEngine()

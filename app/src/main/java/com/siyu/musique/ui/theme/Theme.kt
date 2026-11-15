@@ -5,6 +5,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import com.siyu.musique.R
 
 /** Near-black: text, icons, and the primary color. The theme has no accent color. */
 private val MusiqueInk: Color = Color(0xFF1A1A1A)
@@ -21,6 +24,13 @@ private val MusiqueHairline: Color = Color(0xFFE5E5EA)
 /** Neutral container greys for dialogs, sheets, and menus. */
 private val MusiqueContainerLow: Color = Color(0xFFF7F7F7)
 private val MusiqueContainerHigh: Color = Color(0xFFE9E9EE)
+
+/**
+ * The script wordmark family for the "Musique" header: Great Vibes
+ * (SIL Open Font License), bundled in res/font. Falls back to the
+ * default font if the file ever fails to load.
+ */
+val MusiqueScriptFamily: FontFamily = FontFamily(Font(R.font.great_vibes_regular))
 
 /**
  * The Musique look: forced light, always. Pure white background,
