@@ -172,7 +172,7 @@ fun SettingsScreen(
             onRetry = { viewModel.retryUpdate() },
             onInstall = { apkFile ->
                 if (UpdateInstaller.canInstall(context)) {
-                    UpdateInstaller.installApk(context, apkFile)
+                    viewModel.installUpdate(apkFile)
                 } else {
                     needsInstallPermission = true
                     UpdateInstaller.openInstallPermissionSettings(context)
@@ -360,6 +360,7 @@ private fun updateFailureMessage(kind: UpdateFailureKind): String = when (kind) 
     UpdateFailureKind.PARSE -> "版本信息无法识别，请稍后再试"
     UpdateFailureKind.MISSING_ASSET -> "最新发布中没有找到安装包"
     UpdateFailureKind.DOWNLOAD_FAILED -> "下载失败，请重试"
+    UpdateFailureKind.INSTALL_FAILED -> "安装失败，请重试"
 }
 
 /** Human cache size: bytes, KB, or MB with one decimal. */

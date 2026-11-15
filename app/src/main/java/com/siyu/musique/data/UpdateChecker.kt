@@ -30,6 +30,9 @@ enum class UpdateFailureKind {
 
     /** The APK download failed, or the downloaded size disagreed with the release. */
     DOWNLOAD_FAILED,
+
+    /** The install session failed, or the system installer reported failure. The staged file may be gone, so retry re-downloads unless the file is still there. */
+    INSTALL_FAILED,
 }
 
 /** The outcome of one update check. */

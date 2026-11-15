@@ -105,7 +105,11 @@ object BiliDependencies {
     fun createUpdateChecker(installedVersionCode: Int): UpdateChecker =
         GitHubUpdateChecker(OkHttpUpdateGateway(), installedVersionCode)
 
-    /** The updates dir, under cacheDir: the downloaded APK lives here until the system installer reads it. */
+    /** The update installer: the downloaded APK streams into a PackageInstaller session and commits; the staged file is deleted once committed. */
+    fun createUpdateApkInstaller(context: Context): UpdateApkInstaller =
+        UpdateInstaller.createApkInstaller(context.applicationContext)
+
+    /** The updates dir, under cacheDir: the downloaded APK lives here until the install session streams it in. */
     fun updatesDir(context: Context): File =
         File(context.applicationContext.cacheDir, UPDATES_DIR_NAME)
 

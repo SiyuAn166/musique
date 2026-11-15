@@ -40,17 +40,13 @@
             </intent-filter>
         </service>
 
-        <!-- The downloaded release APK reaches the system installer
-             through this provider; only cacheDir/updates is shared. -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="com.siyu.musique.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
+        <!-- The install session's status callback: the system
+             reports the install result here, including the
+             user-confirmation intent the session needs before it
+             can proceed. -->
+        <receiver
+            android:name=".data.UpdateInstallStatusReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

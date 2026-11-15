@@ -22,10 +22,14 @@ import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.NoOpAudioFileDownloader
+import com.siyu.musique.data.NoOpUpdateApkInstaller
 import com.siyu.musique.data.NoOpUpdateChecker
+import com.siyu.musique.data.UpdateApkInstaller
 import com.siyu.musique.data.UpdateCheckResult
 import com.siyu.musique.data.UpdateChecker
 import com.siyu.musique.data.UpdateFailureKind
+import com.siyu.musique.data.UpdateInstallStatusHandler
+import com.siyu.musique.data.UpdateInstallStatusRegistry
 import com.siyu.musique.data.defaultDownloadsDir
 import com.siyu.musique.data.defaultUpdatesDir
 import com.siyu.musique.data.downloadFileName
@@ -127,8 +131,8 @@ sealed interface PlayerUiState {
  * checks in the background. [Available] carries the release tag
  * and APK size for the dialog; the download URL stays in the
  * ViewModel's pending update. [ReadyToInstall] carries the
- * downloaded APK file, and the settings screen fires the system
- * installer from it.
+ * downloaded APK file, which the ViewModel stages through an
+ * install session when the dialog's install button is tapped.
  */
 sealed interface UpdateUiState {
     /** No check has run, or the dialog was dismissed. */
@@ -231,6 +235,7 @@ class SearchViewModel(
     private val downloadsDir: File = defaultDownloadsDir(),
     private val random: Random = Random.Default,
     private val updateChecker: UpdateChecker = NoOpUpdateChecker,
+    private val updateApkInstaller: UpdateApkInstaller = NoOpUpdateApkInstaller,
     /** The installed version name, shown on the settings update row. Empty when unwired (tests). */
     val installedVersionName: String = "",
     private val updatesDir: File = defaultUpdatesDir(),
@@ -343,6 +348,30 @@ class SearchViewModel(
      * dialog has not been dismissed since.
      */
     private var pendingUpdate: UpdateCheckResult.Available? = null
+
+    /**
+     * The downloaded APK waiting for the install, set when a
+     * download lands in [UpdateUiState.ReadyToInstall]. A failed
+     * install keeps the file, so a retry reuses it instead of
+     * downloading again; a committed session deletes it, so a
+     * retry after a reported install failure downloads again.
+     * Cleared when the dialog is dismissed or a new check starts.
+     */
+    private var stagedApkFile: File? = null
+
+    /**
+     * True once an install session commits: the staged file is
+     * then deleted, and a second tap must not stage it again.
+     * Cleared with [stagedApkFile], and when the system reports
+     * the install failed, so a retry can proceed.
+     */
+    private var installCommitted = false
+
+    /** The install in flight, if any: a second install tap while one runs is ignored. */
+    private var installJob: Job? = null
+
+    /** Reports a system-reported install failure back into the dialog state. Registered in init, unregistered on clear. */
+    private val installStatusHandler = UpdateInstallStatusHandler { onInstallStatusFailed() }
 
     /** The app log lines, for the log screen. */
     val logLines: StateFlow<List<LogLine>> = logger.buffer.snapshot
@@ -485,6 +514,10 @@ class SearchViewModel(
         // The background service's media session routes
         // notification, lock screen, and headset commands here.
         PlaybackControlsRegistry.handler = this
+        // The install session's status receiver reports a
+        // failed install here, so the dialog shows its failure
+        // line plus retry.
+        UpdateInstallStatusRegistry.handler = installStatusHandler
         viewModelScope.launch {
             runCatching { qualityPreferenceStore.load() }
                 .onSuccess { stored -> stored?.let { _qualityPreference.value = it } }
@@ -1760,6 +1793,8 @@ class SearchViewModel(
     fun checkForUpdate() {
         val current = _updateState.value
         if (current is UpdateUiState.Checking || current is UpdateUiState.Downloading) return
+        stagedApkFile = null
+        installCommitted = false
         viewModelScope.launch {
             _updateState.value = UpdateUiState.Checking
             val result = try {
@@ -1803,6 +1838,8 @@ class SearchViewModel(
         val update = pendingUpdate ?: return
         if (_updateState.value is UpdateUiState.Downloading) return
         viewModelScope.launch {
+            stagedApkFile = null
+            installCommitted = false
             _updateState.value = UpdateUiState.Downloading(fraction = null)
             val target = File(updatesDir, GitHubUpdateChecker.APK_ASSET)
             try {
@@ -1811,6 +1848,7 @@ class SearchViewModel(
                         ?.let { downloaded.toFloat() / it }
                     _updateState.value = UpdateUiState.Downloading(fraction)
                 }
+                stagedApkFile = target
                 _updateState.value = UpdateUiState.ReadyToInstall(target)
                 logger.i("Update", "downloaded ${update.tag} (${target.length()} bytes)")
             } catch (e: CancellationException) {
@@ -1823,13 +1861,86 @@ class SearchViewModel(
     }
 
     /**
-     * Retries after a failure: a failed download retries the
-     * download when the update is still pending, anything else
-     * re-runs the check. Ignored unless the state is failed.
+     * Stages the downloaded APK through an install session: the
+     * system shows its install confirmation, and once the session
+     * commits the staged file is deleted, because the install
+     * proceeds from the session's copy. Ignored unless the dialog
+     * offers the install or a failed install is being retried,
+     * while an install runs, or once a session already committed.
+     * A session failure lands in the failed state with the staged
+     * file kept, so [retryUpdate] reuses it; a failure the system
+     * reports later arrives through [onInstallStatusFailed], when
+     * the file is already deleted.
+     */
+    fun installUpdate(apkFile: File) {
+        val current = _updateState.value
+        val canInstall = current is UpdateUiState.ReadyToInstall ||
+            (current is UpdateUiState.Failed && current.kind == UpdateFailureKind.INSTALL_FAILED)
+        if (!canInstall || installCommitted || installJob?.isActive == true) return
+        installJob = viewModelScope.launch {
+            val committed = try {
+                updateApkInstaller.install(apkFile)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                false
+            }
+            if (committed) {
+                installCommitted = true
+                if (_updateState.value == UpdateUiState.Failed(UpdateFailureKind.INSTALL_FAILED)) {
+                    // A retry that committed: restore the offering
+                    // state, so the dialog no longer shows the
+                    // failure line. From ReadyToInstall the state
+                    // already offers the install; anything else
+                    // means the user moved on, and stays untouched.
+                    _updateState.value = UpdateUiState.ReadyToInstall(apkFile)
+                }
+                logger.i("Update", "install session committed for ${apkFile.name}")
+                // The state stays ReadyToInstall: the system
+                // installer UI takes over, and on success the
+                // process is replaced. A failure comes back
+                // through the status receiver.
+            } else {
+                logger.w("Update", "install session failed, staged file kept")
+                if (_updateState.value is UpdateUiState.ReadyToInstall) {
+                    _updateState.value = UpdateUiState.Failed(UpdateFailureKind.INSTALL_FAILED)
+                }
+            }
+        }
+    }
+
+    /**
+     * A failed install the system reported after the session
+     * committed: the staged file is already deleted, so a retry
+     * downloads again. Ignored unless the dialog still offers the
+     * install: a dismissed dialog leaves the failure to the
+     * system installer's own message.
+     */
+    private fun onInstallStatusFailed() {
+        installCommitted = false
+        if (_updateState.value is UpdateUiState.ReadyToInstall) {
+            _updateState.value = UpdateUiState.Failed(UpdateFailureKind.INSTALL_FAILED)
+        }
+        logger.w("Update", "install failed (status callback)")
+    }
+
+    /**
+     * Retries after a failure: a failed install reuses the staged
+     * file when it is still there, a failed download (or a failed
+     * install whose file is gone) retries the download when the
+     * update is still pending, anything else re-runs the check.
+     * Ignored unless the state is failed.
      */
     fun retryUpdate() {
         val failed = _updateState.value as? UpdateUiState.Failed ?: return
-        if (failed.kind == UpdateFailureKind.DOWNLOAD_FAILED && pendingUpdate != null) {
+        val staged = stagedApkFile
+        if (failed.kind == UpdateFailureKind.INSTALL_FAILED && staged != null && staged.exists()) {
+            installUpdate(staged)
+        } else if (
+            (failed.kind == UpdateFailureKind.DOWNLOAD_FAILED ||
+                failed.kind == UpdateFailureKind.INSTALL_FAILED) &&
+            pendingUpdate != null
+        ) {
             downloadUpdate()
         } else {
             checkForUpdate()
@@ -1847,6 +1958,8 @@ class SearchViewModel(
         if (current is UpdateUiState.Checking || current is UpdateUiState.Downloading) return
         _updateState.value = UpdateUiState.Idle
         pendingUpdate = null
+        stagedApkFile = null
+        installCommitted = false
     }
 
     override fun onCleared() {
@@ -1854,6 +1967,9 @@ class SearchViewModel(
         progressJob?.cancel()
         if (PlaybackControlsRegistry.handler === this) {
             PlaybackControlsRegistry.handler = null
+        }
+        if (UpdateInstallStatusRegistry.handler === installStatusHandler) {
+            UpdateInstallStatusRegistry.handler = null
         }
         playerEngine.setListener(null)
         // No stop() here on purpose: the player is shared with
@@ -2037,7 +2153,7 @@ fun mapSearchError(error: Throwable, query: String): SearchUiState.Error {
 /** Maps a playback failure (detail or play URL resolution) onto the message the player error state shows. */
 fun mapPlayerError(error: Throwable): String = describeFailure(error).first
 
-/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, the update checker and updates dir, and the quality, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, the update checker, installer, and updates dir, and the quality, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
@@ -2050,6 +2166,7 @@ class SearchViewModelFactory(
     private val audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
     private val downloadsDir: File = defaultDownloadsDir(),
     private val updateChecker: UpdateChecker = NoOpUpdateChecker,
+    private val updateApkInstaller: UpdateApkInstaller = NoOpUpdateApkInstaller,
     private val installedVersionName: String = "",
     private val updatesDir: File = defaultUpdatesDir(),
 ) : ViewModelProvider.Factory {
@@ -2071,6 +2188,7 @@ class SearchViewModelFactory(
             audioFileDownloader,
             downloadsDir,
             updateChecker = updateChecker,
+            updateApkInstaller = updateApkInstaller,
             installedVersionName = installedVersionName,
             updatesDir = updatesDir,
         ) as T

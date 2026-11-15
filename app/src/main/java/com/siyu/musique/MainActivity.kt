@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
         val downloadsDir = BiliDependencies.downloadsDir(applicationContext)
         val installedVersion = BiliDependencies.installedVersion(applicationContext)
         val updateChecker = BiliDependencies.createUpdateChecker(installedVersion.versionCode)
+        val updateApkInstaller = BiliDependencies.createUpdateApkInstaller(applicationContext)
         val updatesDir = BiliDependencies.updatesDir(applicationContext)
         setContent {
             MusiqueApp(
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
                 audioFileDownloader = audioFileDownloader,
                 downloadsDir = downloadsDir,
                 updateChecker = updateChecker,
+                updateApkInstaller = updateApkInstaller,
                 installedVersionName = installedVersion.versionName,
                 updatesDir = updatesDir,
             )

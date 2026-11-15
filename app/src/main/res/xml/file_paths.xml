@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- FileProvider paths: the update checker downloads the release APK to cacheDir/updates, and the system installer reads it through this provider. Nothing else is shared. -->
-<paths>
-    <cache-path name="updates" path="updates/" />
-</paths>

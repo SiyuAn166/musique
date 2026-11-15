@@ -53,12 +53,14 @@ import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.NoOpAudioFileDownloader
+import com.siyu.musique.data.NoOpUpdateApkInstaller
 import com.siyu.musique.data.NoOpUpdateChecker
 import com.siyu.musique.data.PlaybackModeStore
 import com.siyu.musique.data.PlaybackStateStore
 import com.siyu.musique.data.PlaylistStore
 import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
+import com.siyu.musique.data.UpdateApkInstaller
 import com.siyu.musique.data.UpdateChecker
 import com.siyu.musique.data.defaultDownloadsDir
 import com.siyu.musique.data.defaultUpdatesDir
@@ -101,6 +103,7 @@ fun MusiqueApp(
     audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
     downloadsDir: File = defaultDownloadsDir(),
     updateChecker: UpdateChecker = NoOpUpdateChecker,
+    updateApkInstaller: UpdateApkInstaller = NoOpUpdateApkInstaller,
     installedVersionName: String = "",
     updatesDir: File = defaultUpdatesDir(),
     modifier: Modifier = Modifier,
@@ -119,6 +122,7 @@ fun MusiqueApp(
             audioFileDownloader,
             downloadsDir,
             updateChecker,
+            updateApkInstaller,
             installedVersionName,
             updatesDir,
         ),
