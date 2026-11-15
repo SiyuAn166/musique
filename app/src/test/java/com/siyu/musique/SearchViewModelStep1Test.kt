@@ -182,7 +182,8 @@ class SearchViewModelStep1Test {
     }
 
     @Test
-    fun `play skips the detail call when cid is already filled`() = runTest(testDispatcher) {
+    fun `play with a filled cid resolves without blocking on details, then learns parts in the background`() =
+        runTest(testDispatcher) {
         val repository = DetailFillingRepository()
         val viewModel = SearchViewModel(repository)
         val track = Track(
@@ -195,7 +196,9 @@ class SearchViewModelStep1Test {
         )
         viewModel.play(track)
         advanceUntilIdle()
-        assertEquals(0, repository.detailCalls)
+        // The resolve itself never waits on details; exactly one
+        // background call learns the video's parts afterwards.
+        assertEquals(1, repository.detailCalls)
         // Step 3 fills playUrl on the current track when the URL
         // resolves; everything else about the track is unchanged.
         assertEquals(track, viewModel.currentTrack.value?.copy(playUrl = ""))

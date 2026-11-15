@@ -53,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.model.RepeatMode
+import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
 import com.siyu.musique.model.formatRemaining
 import com.siyu.musique.ui.theme.MusiqueIcons
@@ -113,8 +114,8 @@ fun PlayerScreen(
     var queueSheetOpen by remember { mutableStateOf(false) }
 
     // Opening the sheet learns the current video's parts when
-    // they are still unknown (a track played with its cid
-    // already filled never ran the details call).
+    // they are still unknown (a no-op once the background learn
+    // after the hand-off has landed).
     LaunchedEffect(queueSheetOpen) {
         if (queueSheetOpen) viewModel.loadPartsForCurrent()
     }
@@ -516,57 +517,34 @@ fun PlayerScreen(
             }
         }
 
-        // Playing queue: the whole queue in order, the current
-        // track highlighted, tapping a row jumps to it (tapping
-        // the loaded track does nothing, same as everywhere).
+        // Playing queue as a tree: the queue in order, with the
+        // playing video's parts as indented child rows beneath
+        // it, the current track highlighted, tapping a row jumps
+        // to it (tapping the loaded track does nothing, same as
+        // everywhere). Only the playing video expands; there is
+        // no manual expand or collapse.
         if (queueSheetOpen) {
             ModalBottomSheet(
                 onDismissRequest = { queueSheetOpen = false },
                 sheetState = rememberModalBottomSheetState(),
             ) {
+                // One flattened list: each queue row, followed by
+                // its parts when it is the playing video.
+                val sheetRows = remember(queue, currentParts, track) {
+                    buildList {
+                        for (row in queue) {
+                            add(QueueSheetRow.Video(row))
+                            if (row.id == track?.id && currentParts.size > 1) {
+                                for (part in currentParts) {
+                                    add(QueueSheetRow.Part(part))
+                                }
+                            }
+                        }
+                    }
+                }
                 LazyColumn(
                     modifier = Modifier.padding(bottom = 32.dp),
                 ) {
-                    if (currentParts.size > 1) {
-                        item {
-                            Text(
-                                text = "Parts",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    top = 8.dp,
-                                    bottom = 8.dp,
-                                ),
-                            )
-                        }
-                        itemsIndexed(currentParts, key = { _, part -> part.key }) { index, part ->
-                            SongRow(
-                                track = part,
-                                isCurrent = part.key == track?.key,
-                                onClick = {
-                                    viewModel.playPart(part)
-                                    queueSheetOpen = false
-                                },
-                                trailing = {},
-                            )
-                            if (index < currentParts.lastIndex) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(
-                                        start = SONG_ROW_DIVIDER_START_DP.dp,
-                                    ),
-                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                )
-                            }
-                        }
-                        item {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                                modifier = Modifier.padding(vertical = 8.dp),
-                            )
-                        }
-                    }
                     item {
                         Text(
                             text = "Queue",
@@ -580,24 +558,46 @@ fun PlayerScreen(
                             ),
                         )
                     }
-                    itemsIndexed(queue, key = { _, row -> row.key }) { index, row ->
-                        SongRow(
-                            track = row,
-                            // Parts share one video id, so match by
-                            // key; a row whose cid is still empty
-                            // falls back to the video id.
-                            isCurrent = row.key == track?.key ||
-                                (row.cid.isEmpty() && row.id == track?.id),
-                            onClick = {
-                                viewModel.playFromQueue(row)
-                                queueSheetOpen = false
-                            },
-                            trailing = {},
-                        )
-                        if (index < queue.lastIndex) {
+                    itemsIndexed(
+                        sheetRows,
+                        key = { _, sheetRow -> sheetRow.key },
+                    ) { index, sheetRow ->
+                        when (sheetRow) {
+                            is QueueSheetRow.Video -> SongRow(
+                                track = sheetRow.track,
+                                // Rows are videos: match by video
+                                // id, so the row stays highlighted
+                                // while any of its parts plays.
+                                isCurrent = sheetRow.track.id == track?.id,
+                                onClick = {
+                                    viewModel.playFromQueue(sheetRow.track)
+                                    queueSheetOpen = false
+                                },
+                                trailing = {},
+                            )
+
+                            is QueueSheetRow.Part -> SongRow(
+                                track = sheetRow.track,
+                                isCurrent = sheetRow.track.key == track?.key,
+                                onClick = {
+                                    viewModel.playPart(sheetRow.track)
+                                    queueSheetOpen = false
+                                },
+                                trailing = {},
+                                modifier = Modifier.padding(
+                                    start = QUEUE_PART_INDENT_DP.dp,
+                                ),
+                            )
+                        }
+                        if (index < sheetRows.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(
-                                    start = SONG_ROW_DIVIDER_START_DP.dp,
+                                    start = (SONG_ROW_DIVIDER_START_DP +
+                                        if (sheetRow is QueueSheetRow.Part) {
+                                            QUEUE_PART_INDENT_DP
+                                        } else {
+                                            0
+                                        }).dp,
                                 ),
                                 color = MaterialTheme.colorScheme.outlineVariant,
                             )
@@ -632,5 +632,26 @@ private fun ModeButton(
             },
             modifier = Modifier.size(28.dp),
         )
+    }
+}
+
+/** Extra start padding for part rows nested under their video in the queue sheet. */
+private const val QUEUE_PART_INDENT_DP: Int = 32
+
+/**
+ * One row of the queue sheet's flattened tree: a queue video, or
+ * one of the playing video's parts. Keys are prefixed so a part
+ * row never collides with its video row when both share a key.
+ */
+private sealed interface QueueSheetRow {
+    val track: Track
+    val key: String
+
+    data class Video(override val track: Track) : QueueSheetRow {
+        override val key: String get() = "video:${track.key}"
+    }
+
+    data class Part(override val track: Track) : QueueSheetRow {
+        override val key: String get() = "part:${track.key}"
     }
 }

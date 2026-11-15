@@ -59,6 +59,26 @@ class PlaybackStateJsonTest {
     }
 
     @Test
+    fun `a current key naming a part of a queue video decodes`() {
+        val videoRow = track("BV1multi", "")
+        val encoded = PlaybackStateJson.encode(
+            SavedPlayback(
+                listOf(videoRow, trackA),
+                currentKey = "BV1multi:cid-part-2",
+                positionMs = 30_000L,
+            ),
+        )
+        assertEquals(
+            SavedPlayback(
+                listOf(videoRow, trackA),
+                "BV1multi:cid-part-2",
+                30_000L,
+            ),
+            PlaybackStateJson.decode(encoded),
+        )
+    }
+
+    @Test
     fun `a negative position clamps to zero`() {
         val encoded = PlaybackStateJson.encode(
             SavedPlayback(listOf(trackA), currentKey = trackA.key, positionMs = -500L),

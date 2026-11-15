@@ -108,6 +108,52 @@ class PlaybackRestoreTest {
         }
 
     @Test
+    fun `restore with a part key reconstructs the part track at the saved position`() =
+        runTest(testDispatcher) {
+            val engine = FakePlayerEngine()
+            val videoRow = Track(
+                id = "BV1multi",
+                cid = "",
+                title = "Multi",
+                artist = "A",
+                cover = "",
+                duration = 600.seconds,
+            )
+            val store = InMemoryPlaybackStateStore(
+                SavedPlayback(
+                    queue = listOf(videoRow, trackA),
+                    currentKey = "BV1multi:cid-part-2",
+                    positionMs = 30_000L,
+                ),
+            )
+            val vm = viewModel(engine, store)
+            advanceUntilIdle()
+            assertEquals("Multi", vm.currentTrack.value?.title)
+            assertEquals("cid-part-2", vm.currentTrack.value?.cid)
+            assertTrue(vm.playerState.value is PlayerUiState.Paused)
+            assertFalse(vm.isPlaying.value)
+            assertEquals(30_000L, vm.playbackProgress.value.positionMs)
+            assertEquals(0, engine.playCalls.size)
+            assertEquals(listOf(videoRow, trackA), vm.queue.value)
+        }
+
+    @Test
+    fun `restore with a key naming no video restores nothing`() = runTest(testDispatcher) {
+        val engine = FakePlayerEngine()
+        val store = InMemoryPlaybackStateStore(
+            SavedPlayback(
+                queue = listOf(trackA, trackB),
+                currentKey = "BV1missing:cid-x",
+                positionMs = 30_000L,
+            ),
+        )
+        val vm = viewModel(engine, store)
+        advanceUntilIdle()
+        assertNull(vm.currentTrack.value)
+        assertTrue(vm.playerState.value is PlayerUiState.Idle)
+    }
+
+    @Test
     fun `resuming restored playback seeks to the saved position`() = runTest(testDispatcher) {
         val engine = FakePlayerEngine()
         val vm = viewModel(engine, InMemoryPlaybackStateStore(savedState()))

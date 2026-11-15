@@ -28,8 +28,8 @@ import org.junit.Test
 /**
  * Parts selection for multi-part videos: the details call
  * learns the parts, they survive part switches, clear on a new
- * video, load on demand for cid-filled tracks, and playing a
- * part adopts the parts as the queue.
+ * video, learn in the background for cid-filled tracks, and
+ * playing a part leaves the queue untouched.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PartsSelectionTest {
@@ -147,11 +147,13 @@ class PartsSelectionTest {
         assertEquals(3, vm.currentParts.value.size)
         vm.play(otherVideo)
         advanceUntilIdle()
-        assertTrue(vm.currentParts.value.isEmpty())
+        // The old video's parts are gone; the new video's single
+        // part list is learned in the background after the hand-off.
+        assertEquals(listOf(otherVideo), vm.currentParts.value)
     }
 
     @Test
-    fun `parts load on demand for a cid-filled track`() = runTest(testDispatcher) {
+    fun `parts learn in the background for a cid-filled track`() = runTest(testDispatcher) {
         val engine = FakePlayerEngine()
         val repo = PartsRepository(listOf(part1), parts)
         val vm = viewModel(engine, repo)
@@ -159,10 +161,8 @@ class PartsSelectionTest {
         advanceUntilIdle()
         vm.play(part1)
         advanceUntilIdle()
-        assertTrue(vm.currentParts.value.isEmpty())
-        vm.loadPartsForCurrent()
-        advanceUntilIdle()
         assertEquals(parts, vm.currentParts.value)
+        assertEquals(1, repo.detailCalls)
         // Known now: a second load does not fetch again.
         vm.loadPartsForCurrent()
         advanceUntilIdle()
@@ -170,7 +170,7 @@ class PartsSelectionTest {
     }
 
     @Test
-    fun `playing a part adopts the parts as the queue`() = runTest(testDispatcher) {
+    fun `playing a part leaves the queue unchanged`() = runTest(testDispatcher) {
         val engine = FakePlayerEngine()
         val vm = viewModel(engine, PartsRepository(listOf(videoRow), parts))
         val playlist = Playlist.default().copy(tracks = listOf(videoRow, otherVideo))
@@ -181,8 +181,9 @@ class PartsSelectionTest {
         assertEquals(parts, vm.currentParts.value)
         vm.playPart(part3)
         advanceUntilIdle()
-        assertEquals(parts, vm.queue.value)
+        assertEquals(listOf(videoRow, otherVideo), vm.queue.value)
         assertEquals("Part 3", vm.currentTrack.value?.title)
+        assertEquals(parts, vm.currentParts.value)
     }
 
     @Test

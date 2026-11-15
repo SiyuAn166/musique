@@ -15,8 +15,9 @@ import kotlinx.serialization.json.put
  * current track's key, and the position in milliseconds.
  * Decoding is strict about structure: anything that is not an
  * object with a track array and a current key that names a
- * queue member decodes to null, and the caller starts fresh.
- * Pure Kotlin so it is unit tested directly.
+ * queue member (or a part of one) decodes to null, and the
+ * caller starts fresh. Pure Kotlin so it is unit tested
+ * directly.
  */
 object PlaybackStateJson {
 
@@ -41,7 +42,15 @@ object PlaybackStateJson {
             return null
         }
         val currentKey = obj["currentKey"]?.jsonPrimitive?.contentOrNull ?: return null
-        if (queue.none { it.key == currentKey }) return null
+        // The key may name a part of a queue video ("bvid:cid")
+        // rather than a queue member: the queue holds videos,
+        // while playback saves the part that was playing. A key
+        // whose video id matches a queue member still restores;
+        // anything else decodes to null.
+        val videoId = currentKey.substringBefore(":")
+        val namesMember = queue.any { it.key == currentKey }
+        val namesMemberVideo = ":" in currentKey && queue.any { it.id == videoId }
+        if (!namesMember && !namesMemberVideo) return null
         val positionMs = (obj["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L).coerceAtLeast(0L)
         return SavedPlayback(queue, currentKey, positionMs)
     }

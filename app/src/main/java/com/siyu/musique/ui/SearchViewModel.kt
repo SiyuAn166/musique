@@ -283,11 +283,12 @@ class SearchViewModel(
     }
 
     /**
-     * The parts of the video currently playing, for the parts
-     * section of the queue sheet. Learned from the details call
-     * when a track plays, or on demand when the sheet opens for
-     * a track whose cid was already filled. Empty while unknown
-     * or for single-part videos.
+     * The parts of the video currently playing, shown as indented
+     * child rows under the video in the queue sheet. Learned from
+     * the details call when a track plays, in the background
+     * after the hand-off for a track whose cid was already
+     * filled, or on demand when the sheet opens. Empty while
+     * unknown or for single-part videos.
      */
     private val _currentParts = MutableStateFlow<List<Track>>(emptyList())
     val currentParts: StateFlow<List<Track>> = _currentParts.asStateFlow()
@@ -374,7 +375,20 @@ class SearchViewModel(
             // that landed before this load finished wins, and a
             // restore must never clobber it.
             if (restored != null && _currentTrack.value == null && playIntent == 0) {
+                // The saved key may name a part ("bvid:cid") of a
+                // queue video instead of a queue member itself:
+                // the queue holds videos, while playback saves
+                // the part that was playing. A key whose video id
+                // matches a queue member restores that member
+                // with the saved part's cid; any other key
+                // restores nothing.
                 val current = restored.queue.firstOrNull { it.key == restored.currentKey }
+                    ?: restored.queue.firstOrNull {
+                        it.id == restored.currentKey.substringBefore(":")
+                    }?.let { member ->
+                        val savedCid = restored.currentKey.substringAfter(":", "")
+                        if (savedCid.isEmpty()) null else member.copy(cid = savedCid)
+                    }
                 if (current != null) {
                     val duration = current.duration.inWholeMilliseconds.coerceAtLeast(0L)
                     updateQueue(restored.queue)
@@ -649,7 +663,7 @@ class SearchViewModel(
             return
         }
         adoptSearchQueueFor(track)
-        playAt(track, startPositionMs = 0L, resumePlaying = true, adoptPartsQueue = true)
+        playAt(track, startPositionMs = 0L, resumePlaying = true)
     }
 
     /**
@@ -690,44 +704,53 @@ class SearchViewModel(
     }
 
     /**
-     * Loads the current video's parts on demand, for the parts
-     * section of the queue sheet. A no-op when the parts are
+     * Loads the current video's parts on demand, for the indented
+     * part rows in the queue sheet. A no-op when the parts are
      * already known for this video or nothing is loaded. A
      * failure leaves the parts unknown (the sheet shows the
      * queue only) and is logged, never surfaced.
      */
     fun loadPartsForCurrent() {
         val current = _currentTrack.value ?: return
-        if (partsKnownForVideoId == current.id) return
+        learnPartsForVideo(current)
+    }
+
+    /**
+     * Fetches [video]'s parts in the background and keeps them
+     * when the same video is still current: part-aware navigation
+     * and the queue sheet's tree rows need the parts even for
+     * tracks whose cid was already filled (downloads, restored
+     * playback), which never run the details call in [playAt].
+     * Deduped by [partsKnownForVideoId]: same-video part switches
+     * never refetch. A failure only logs.
+     */
+    private fun learnPartsForVideo(video: Track) {
+        if (partsKnownForVideoId == video.id) return
         viewModelScope.launch {
-            val detailed = runCatching { repository.fetchDetail(current) }
+            val detailed = runCatching { repository.fetchDetail(video) }
                 .onFailure {
                     logger.w(TAG, "parts load failed (${it::class.simpleName})")
                 }
                 .getOrNull() ?: return@launch
             // Only keep the result when the same video still plays.
-            if (_currentTrack.value?.id == current.id) {
+            if (_currentTrack.value?.id == video.id) {
                 _currentParts.value = detailed.parts
-                partsKnownForVideoId = current.id
+                partsKnownForVideoId = video.id
             }
         }
     }
 
     /**
-     * Play [part] from the parts section: the parts become the
-     * queue, so the video plays through in order from there.
-     * Tapping the loaded part is a no-op, same as [play].
+     * Play [part] from the indented part rows in the queue sheet:
+     * the queue is left untouched, so the video's parts play
+     * within the list the video came from. Tapping the loaded
+     * part is a no-op, same as [play].
      */
     fun playPart(part: Track) {
-        val parts = _currentParts.value
         logger.i(TAG, "play intent=${playIntent + 1} bvid=${part.id} cid=${part.cid} part")
         if (isCurrentTrack(part)) {
             logger.i(TAG, "play ignored: already current bvid=${part.id} cid=${part.cid}")
             return
-        }
-        if (parts.size > 1) {
-            updateQueue(parts)
-            shuffleHistory.clear()
         }
         playKeepingQueue(part)
     }
@@ -816,18 +839,17 @@ class SearchViewModel(
      * hand-off to the engine. [startPositionMs] seeks into the new
      * item once the engine has it (quality changes resume where the
      * old item left off); [resumePlaying] false pauses immediately
-     * after the hand-off, keeping a paused track paused. When
-     * [adoptPartsQueue] is true (search plays only) and the details
-     * call finds more than one part, the parts become the queue so
-     * a multi-part video plays through in order instead of stopping
-     * after the first part; the search list row keeps the
-     * video-level track while the player shows the part playing.
+     * after the hand-off, keeping a paused track paused. The queue
+     * is never rewritten here: a multi-part video keeps the list
+     * it came from, and part-aware navigation walks its parts
+     * within that list. The details call learns the video's
+     * parts; for a track whose cid was already filled, the parts
+     * are learned in the background after the hand-off.
      */
     private fun playAt(
         track: Track,
         startPositionMs: Long,
         resumePlaying: Boolean,
-        adoptPartsQueue: Boolean = false,
     ) {
         playIntent++
         val intent = playIntent
@@ -870,13 +892,7 @@ class SearchViewModel(
                     updateTrackInList(detailed.track)
                     _currentParts.value = detailed.parts
                     partsKnownForVideoId = current.id
-                    if (adoptPartsQueue && detailed.parts.size > 1) {
-                        updateQueue(detailed.parts)
-                        shuffleHistory.clear()
-                        current = detailed.parts[0]
-                    } else {
-                        current = detailed.track
-                    }
+                    current = detailed.track
                     _currentTrack.value = current
                 }
                 // A downloaded file wins over the network: the
@@ -914,6 +930,13 @@ class SearchViewModel(
                 } else {
                     logger.i(TAG, "player play intent=$intent quality=$qualityId")
                 }
+                // Parts for a cid-filled track were never learned
+                // above: fetch them in the background so
+                // part-aware navigation and the queue sheet's tree
+                // rows work for downloads and restored playback
+                // too. A no-op when the details call above
+                // already learned them.
+                learnPartsForVideo(current)
                 if (startPositionMs > 0) {
                     playerEngine.seekTo(startPositionMs)
                     publishProgress()
@@ -1100,7 +1123,9 @@ class SearchViewModel(
      * The track a next press (or auto-advance) should play. With
      * shuffle on, a random queue member other than the current
      * track, and the current track is pushed onto the shuffle
-     * history so previous can walk back. Otherwise the next track
+     * history so previous can walk back; shuffle never walks
+     * parts. Otherwise, when the current track is a part with a
+     * later part in its video, the next part; else the next track
      * in queue order, wrapping to the first when repeat-all is on;
      * null at the end of the queue with repeat off.
      */
@@ -1113,6 +1138,10 @@ class SearchViewModel(
             shuffleHistory.addLast(current)
             return candidates.ifEmpty { listOf(current) }.random(random)
         }
+        val partIndex = currentPartIndex()
+        if (partIndex >= 0 && partIndex + 1 < _currentParts.value.size) {
+            return _currentParts.value[partIndex + 1]
+        }
         val index = indexOfCurrent()
         if (index < 0) return null
         if (index + 1 < currentQueue.size) return currentQueue[index + 1]
@@ -1121,14 +1150,20 @@ class SearchViewModel(
 
     /**
      * The track a previous press should play. With shuffle on and a
-     * non-empty history, the most recently played track; otherwise
-     * the previous track in queue order, wrapping to the last when
-     * repeat-all is on; null at the start of the queue with repeat
-     * off.
+     * non-empty history, the most recently played track. Otherwise,
+     * when the current track is a part past the first in its video,
+     * the previous part; else the previous track in queue order,
+     * wrapping to the last when repeat-all is on; null at the start
+     * of the queue with repeat off. Part walking is sequential
+     * only: shuffle never walks parts, even with an empty history.
      */
     private fun pickPreviousTrack(): Track? {
         if (_shuffleEnabled.value && shuffleHistory.isNotEmpty()) {
             return shuffleHistory.removeLast()
+        }
+        if (!_shuffleEnabled.value) {
+            val partIndex = currentPartIndex()
+            if (partIndex > 0) return _currentParts.value[partIndex - 1]
         }
         val index = indexOfCurrent()
         if (index < 0) return null
@@ -1138,6 +1173,19 @@ class SearchViewModel(
         } else {
             null
         }
+    }
+
+    /**
+     * The current track's position within [_currentParts], or -1
+     * when the parts are unknown, single, or empty, or the current
+     * track is not among them. Matched by [Track.key]: parts of
+     * one video share a bvid, so the cid decides.
+     */
+    private fun currentPartIndex(): Int {
+        val parts = _currentParts.value
+        if (parts.size <= 1) return -1
+        val current = _currentTrack.value ?: return -1
+        return parts.indexOfFirst { it.key == current.key }
     }
 
     /**

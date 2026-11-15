@@ -388,7 +388,7 @@ class DownloadViewModelTest {
     }
 
     @Test
-    fun `play prefers the current quality file with zero network calls`() =
+    fun `play prefers the current quality file with no play URL call`() =
         runTest(testDispatcher) {
             val track = track("BV1a", "111")
             val local = record(track, 30280)
@@ -406,7 +406,11 @@ class DownloadViewModelTest {
             assertTrue(url.startsWith("file:"))
             assertTrue(url.endsWith("BV1a_111_30280.m4a"))
             assertEquals(0, repository.fetchPlayUrlCalls)
-            assertEquals(0, repository.fetchDetailCalls)
+            // The file plays without resolving a URL; exactly one
+            // background detail call learns the video's parts so
+            // part-aware navigation works for downloads too. It
+            // never blocks playback and fails silently offline.
+            assertEquals(1, repository.fetchDetailCalls)
             assertEquals("192K", vm.resolvedQualityLabel.value)
         }
 
