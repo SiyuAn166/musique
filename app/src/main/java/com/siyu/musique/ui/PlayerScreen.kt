@@ -94,15 +94,20 @@ private const val DISMISS_FLING_VELOCITY_PX_PER_SECOND: Float = 1000f
  * release; the polled progress keeps running underneath.
  * Dragging the page down moves it with the finger; releasing
  * past the threshold, or with a fast downward fling, slides it
- * off the bottom and goes back, like the chevron button, and a
- * shorter drag springs it back to rest. Player errors show
- * their message with a retry icon button.
+ * off the bottom and closes the player, like the chevron
+ * button, and a shorter drag springs it back to rest. Player
+ * errors show their message with a retry icon button.
+ *
+ * The page paints its own opaque background: it is rendered as
+ * an overlay above the tab content, and the background must
+ * slide down with the page during the dismiss drag so the tab
+ * content shows through behind it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     viewModel: SearchViewModel,
-    onBack: () -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
@@ -156,9 +161,10 @@ fun PlayerScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .onSizeChanged { pageHeightPx = it.height }
-            .pointerInput(onBack, dismissThresholdPx) {
+            .pointerInput(onClose, dismissThresholdPx) {
                 var dragged = 0f
                 val velocityTracker = VelocityTracker()
                 detectVerticalDragGestures(
@@ -176,7 +182,7 @@ fun PlayerScreen(
                                 flingVelocity > DISMISS_FLING_VELOCITY_PX_PER_SECOND
                             ) {
                                 dismissOffset.animateTo(pageHeightPx.toFloat(), spring())
-                                onBack()
+                                onClose()
                             } else {
                                 dismissOffset.animateTo(0f, spring())
                             }
@@ -200,7 +206,7 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onClose) {
                 Icon(
                     imageVector = MusiqueIcons.ChevronDown,
                     contentDescription = "Back",

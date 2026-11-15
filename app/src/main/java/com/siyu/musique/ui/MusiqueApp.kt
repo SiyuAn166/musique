@@ -32,9 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -73,22 +75,25 @@ import java.io.File
 /**
  * App navigation: a single Activity hosting a NavHost inside a
  * Column shell. The three top-level tabs are "home" (the
- * playlists), "search", and "settings"; "player" is the player
- * page, "log" is the debug log screen, "playlists" lists the
- * playlists (unreachable since the home tab shows them inline,
- * kept for now), and "playlist/{id}" is one playlist's detail
- * screen. The ViewModel is shared between the screens and is
- * built with the repository, player engine, and stores the
- * Activity hands in. Playlist ids are UUIDs or "default" (or
- * "downloads" for the synthetic playlist), so they are safe to
- * carry in a route.
+ * playlists), "search", and "settings"; "log" is the debug log
+ * screen, "playlists" lists the playlists (unreachable since
+ * the home tab shows them inline, kept for now), and
+ * "playlist/{id}" is one playlist's detail screen. The player
+ * page is not a destination: it is a full-screen overlay above
+ * the shell, so the tab destination stays composed underneath
+ * and shows through while the player slides down on dismiss.
+ * The ViewModel is shared between the screens and is built with
+ * the repository, player engine, and stores the Activity hands
+ * in. Playlist ids are UUIDs or "default" (or "downloads" for
+ * the synthetic playlist), so they are safe to carry in a route.
  *
  * The shell owns one shared mini player bar and the bottom tab
  * bar, below the NavHost: the tab bar shows only on the three
  * tab destinations, and the mini bar shows on the tab
  * destinations, the playlist detail, and the playlists screen,
- * but never on the player page or the log screen. No Scaffold:
- * the screens pad themselves for the safe drawing insets.
+ * but never on the log screen. While the player overlay is open
+ * both bars sit underneath it, covered. No Scaffold: the
+ * screens pad themselves for the safe drawing insets.
  */
 @Composable
 fun MusiqueApp(
@@ -135,6 +140,11 @@ fun MusiqueApp(
         currentRoute == "playlists" ||
         currentRoute == "playlist/{playlistId}"
 
+    // Whether the player overlay is open. Plain UI state: it
+    // need not survive process death, the mini bar reopens the
+    // player.
+    var playerOpen by remember { mutableStateOf(false) }
+
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
@@ -160,6 +170,11 @@ fun MusiqueApp(
         wasImeVisible = imeVisible
     }
 
+    // Back closes the player overlay instead of popping the nav
+    // stack. The chevron button closes instantly too, with no
+    // animation, like every other page switch.
+    BackHandler(enabled = playerOpen) { playerOpen = false }
+
     MusiqueTheme {
         // The Surface paints the white background: without it the
         // screens are transparent and the window background shows
@@ -168,163 +183,187 @@ fun MusiqueApp(
             color = MaterialTheme.colorScheme.background,
             modifier = modifier.fillMaxSize(),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(modifier = Modifier.weight(1f)) {
-                    NavHost(
-                        navController = navController,
-                        startDestination = "home",
-                        // No transition animations: page switches
-                        // cut instantly instead of fading.
-                        enterTransition = { EnterTransition.None },
-                        exitTransition = { ExitTransition.None },
-                        popEnterTransition = { EnterTransition.None },
-                        popExitTransition = { ExitTransition.None },
-                    ) {
-                        composable("home") {
-                            HomeScreen(
-                                viewModel = viewModel,
-                                onOpenPlaylistDetail = { playlistId ->
-                                    navController.navigate("playlist/$playlistId")
-                                },
-                            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        NavHost(
+                            navController = navController,
+                            startDestination = "home",
+                            // No transition animations: page switches
+                            // cut instantly instead of fading.
+                            enterTransition = { EnterTransition.None },
+                            exitTransition = { ExitTransition.None },
+                            popEnterTransition = { EnterTransition.None },
+                            popExitTransition = { ExitTransition.None },
+                        ) {
+                            composable("home") {
+                                HomeScreen(
+                                    viewModel = viewModel,
+                                    onOpenPlaylistDetail = { playlistId ->
+                                        navController.navigate("playlist/$playlistId")
+                                    },
+                                )
+                            }
+                            composable("search") {
+                                SearchScreen(viewModel = viewModel)
+                            }
+                            composable("settings") {
+                                SettingsScreen(
+                                    viewModel = viewModel,
+                                    onOpenLog = { navController.navigate("log") },
+                                )
+                            }
+                            composable("log") {
+                                LogScreen(
+                                    viewModel = viewModel,
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
+                            composable("playlists") {
+                                PlaylistsScreen(
+                                    viewModel = viewModel,
+                                    onOpenDetail = { playlistId ->
+                                        navController.navigate("playlist/$playlistId")
+                                    },
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
+                            composable(
+                                route = "playlist/{playlistId}",
+                                arguments = listOf(
+                                    navArgument("playlistId") { type = NavType.StringType },
+                                ),
+                            ) { backStackEntry ->
+                                val playlistId = backStackEntry.arguments?.getString("playlistId")
+                                    ?: return@composable
+                                PlaylistDetailScreen(
+                                    viewModel = viewModel,
+                                    playlistId = playlistId,
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
                         }
-                        composable("search") {
-                            SearchScreen(viewModel = viewModel)
-                        }
-                        composable("settings") {
-                            SettingsScreen(
-                                viewModel = viewModel,
-                                onOpenLog = { navController.navigate("log") },
-                            )
-                        }
-                        composable("player") {
-                            PlayerScreen(
-                                viewModel = viewModel,
-                                onBack = { navController.popBackStack() },
-                            )
-                        }
-                        composable("log") {
-                            LogScreen(
-                                viewModel = viewModel,
-                                onBack = { navController.popBackStack() },
-                            )
-                        }
-                        composable("playlists") {
-                            PlaylistsScreen(
-                                viewModel = viewModel,
-                                onOpenDetail = { playlistId ->
-                                    navController.navigate("playlist/$playlistId")
-                                },
-                                onBack = { navController.popBackStack() },
-                            )
-                        }
-                        composable(
-                            route = "playlist/{playlistId}",
-                            arguments = listOf(
-                                navArgument("playlistId") { type = NavType.StringType },
-                            ),
-                        ) { backStackEntry ->
-                            val playlistId = backStackEntry.arguments?.getString("playlistId")
-                                ?: return@composable
-                            PlaylistDetailScreen(
-                                viewModel = viewModel,
-                                playlistId = playlistId,
-                                onBack = { navController.popBackStack() },
-                            )
+                    }
+
+                    if (showMiniBar) {
+                        MiniPlayerBar(
+                            track = currentTrack,
+                            isPlaying = isPlaying,
+                            playerState = playerState,
+                            progress = progress,
+                            onTogglePlayPause = { viewModel.togglePlayPause() },
+                            onRetry = { viewModel.retryPlayback() },
+                            onOpenPlayer = { playerOpen = true },
+                            onPrevious = { viewModel.playPrevious() },
+                            onNext = { viewModel.playNext() },
+                            qualityLabel = resolvedQualityLabel,
+                        )
+                    }
+
+                    if (showTabs) {
+                        // A hand-rolled tab row instead of
+                        // NavigationBar: the Material bar is 80dp
+                        // tall, which eats too much of the screen.
+                        // This one is 56dp with the same icons,
+                        // labels, background, and selection tints.
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(TAB_BAR_HEIGHT_DP.dp)
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .selectableGroup(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TAB_ITEMS.forEach { item ->
+                                val selected = currentRoute == item.route
+                                val tabTint = if (selected) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .selectable(
+                                            selected = selected,
+                                            onClick = {
+                                                // A tab tap that lands
+                                                // while the keyboard is
+                                                // up, or within a beat
+                                                // of it hiding, is the
+                                                // keyboard's dismiss tap
+                                                // falling through, not
+                                                // a real tab tap.
+                                                if (imeVisible ||
+                                                    SystemClock.uptimeMillis() - imeHiddenAtMs <
+                                                        IME_HIDE_TAP_GUARD_MS
+                                                ) {
+                                                    return@selectable
+                                                }
+                                                navController.navigate(item.route) {
+                                                    // One copy of each
+                                                    // tab, with its state
+                                                    // saved and restored:
+                                                    // the search text and
+                                                    // results survive
+                                                    // switching away and
+                                                    // back.
+                                                    popUpTo(navController.graph.startDestinationId) {
+                                                        saveState = true
+                                                    }
+                                                    launchSingleTop = true
+                                                    restoreState = true
+                                                }
+                                            },
+                                            role = Role.Tab,
+                                        )
+                                        .padding(vertical = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Icon(
+                                        imageVector = item.icon,
+                                        contentDescription = item.label,
+                                        tint = tabTint,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = item.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = tabTint,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-
-                if (showMiniBar) {
-                    MiniPlayerBar(
-                        track = currentTrack,
-                        isPlaying = isPlaying,
-                        playerState = playerState,
-                        progress = progress,
-                        onTogglePlayPause = { viewModel.togglePlayPause() },
-                        onRetry = { viewModel.retryPlayback() },
-                        onOpenPlayer = { navController.navigate("player") },
-                        onPrevious = { viewModel.playPrevious() },
-                        onNext = { viewModel.playNext() },
-                        qualityLabel = resolvedQualityLabel,
-                    )
-                }
-
-                if (showTabs) {
-                    // A hand-rolled tab row instead of
-                    // NavigationBar: the Material bar is 80dp
-                    // tall, which eats too much of the screen.
-                    // This one is 56dp with the same icons,
-                    // labels, background, and selection tints.
-                    Row(
+                // The player is a full-screen overlay above the
+                // shell, not a navigation destination: the tab
+                // destination stays composed underneath, so
+                // dragging the player down reveals it instead of
+                // a blank background. Opening and the chevron
+                // close cut instantly, like every other page
+                // switch; only the drag dismiss animates. The
+                // overlay also swallows taps on empty areas of
+                // the player, so they never reach the mini bar
+                // and tab bar underneath.
+                if (playerOpen) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(TAB_BAR_HEIGHT_DP.dp)
-                            .background(MaterialTheme.colorScheme.surfaceContainer)
-                            .selectableGroup(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically,
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
                     ) {
-                        TAB_ITEMS.forEach { item ->
-                            val selected = currentRoute == item.route
-                            val tabTint = if (selected) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .selectable(
-                                        selected = selected,
-                                        onClick = {
-                                            // A tab tap that lands
-                                            // while the keyboard is
-                                            // up, or within a beat
-                                            // of it hiding, is the
-                                            // keyboard's dismiss tap
-                                            // falling through, not
-                                            // a real tab tap.
-                                            if (imeVisible ||
-                                                SystemClock.uptimeMillis() - imeHiddenAtMs <
-                                                    IME_HIDE_TAP_GUARD_MS
-                                            ) {
-                                                return@selectable
-                                            }
-                                            navController.navigate(item.route) {
-                                                // One copy of each
-                                                // tab, with its state
-                                                // saved and restored:
-                                                // the search text and
-                                                // results survive
-                                                // switching away and
-                                                // back.
-                                                popUpTo(navController.graph.startDestinationId) {
-                                                    saveState = true
-                                                }
-                                                launchSingleTop = true
-                                                restoreState = true
-                                            }
-                                        },
-                                        role = Role.Tab,
-                                    )
-                                    .padding(vertical = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Icon(
-                                    imageVector = item.icon,
-                                    contentDescription = item.label,
-                                    tint = tabTint,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = item.label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = tabTint,
-                                )
-                            }
-                        }
+                        PlayerScreen(
+                            viewModel = viewModel,
+                            onClose = { playerOpen = false },
+                        )
                     }
                 }
             }
