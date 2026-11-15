@@ -35,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -43,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.siyu.musique.core.network.AudioQuality
+import com.siyu.musique.model.RepeatMode
 import com.siyu.musique.model.formatDuration
 import com.siyu.musique.model.formatRemaining
 import com.siyu.musique.ui.theme.MusiqueIcons
@@ -55,8 +58,12 @@ import kotlin.time.Duration.Companion.milliseconds
  * elapsed time left and remaining (negative) time right, black
  * skip icons around one large black pause circle, a full-width
  * slim volume slider with speaker icons at both ends, and the
- * quality chip alone at the bottom right. Sections are spread
- * out with generous gaps instead of crammed together. Dragging
+ * quality chip alone at the bottom right. The controls row is
+ * shuffle, skip-previous, the pause circle, skip-next, repeat:
+ * the shuffle and repeat buttons carry a small dot underneath
+ * when active, and the repeat button cycles off, repeat all,
+ * repeat one. Sections are spread out with generous gaps instead
+ * of crammed together. Dragging
  * the progress bar shows the dragged position and seeks on
  * release; the polled progress keeps running underneath.
  * Dragging the page down past the threshold goes back, like the
@@ -75,6 +82,8 @@ fun PlayerScreen(
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
     val qualityPreference by viewModel.qualityPreference.collectAsStateWithLifecycle()
     val volume by viewModel.volume.collectAsStateWithLifecycle()
+    val repeatMode by viewModel.repeatMode.collectAsStateWithLifecycle()
+    val shuffleEnabled by viewModel.shuffleEnabled.collectAsStateWithLifecycle()
 
     /** The dragged position while the user holds the slider, or null when not dragging. */
     var dragPositionMs by remember { mutableStateOf<Long?>(null) }
@@ -218,9 +227,16 @@ fun PlayerScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
             Row(
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ModeButton(
+                    icon = MusiqueIcons.Shuffle,
+                    contentDescription = if (shuffleEnabled) "Shuffle on" else "Shuffle off",
+                    active = shuffleEnabled,
+                    onClick = { viewModel.toggleShuffle() },
+                )
                 IconButton(onClick = { viewModel.playPrevious() }) {
                     Icon(
                         imageVector = MusiqueIcons.SkipPrevious,
@@ -257,6 +273,20 @@ fun PlayerScreen(
                         modifier = Modifier.size(44.dp),
                     )
                 }
+                ModeButton(
+                    icon = if (repeatMode == RepeatMode.ONE) {
+                        MusiqueIcons.RepeatOne
+                    } else {
+                        MusiqueIcons.Repeat
+                    },
+                    contentDescription = when (repeatMode) {
+                        RepeatMode.OFF -> "Repeat off"
+                        RepeatMode.ALL -> "Repeat all"
+                        RepeatMode.ONE -> "Repeat one"
+                    },
+                    active = repeatMode != RepeatMode.OFF,
+                    onClick = { viewModel.cycleRepeatMode() },
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -350,5 +380,48 @@ fun PlayerScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * A small mode button in the controls row (shuffle, repeat): a
+ * grey icon when off, black with a small dot underneath when on.
+ * The dot keeps its place when inactive (transparent) so the row
+ * never shifts as modes change.
+ */
+@Composable
+private fun ModeButton(
+    icon: ImageVector,
+    contentDescription: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = if (active) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(28.dp),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(4.dp)
+                .background(
+                    if (active) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        Color.Transparent
+                    },
+                    CircleShape,
+                ),
+        )
     }
 }

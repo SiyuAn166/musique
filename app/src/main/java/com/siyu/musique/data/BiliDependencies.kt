@@ -32,6 +32,10 @@ object BiliDependencies {
     fun createPlaylistStore(context: Context): PlaylistStore =
         DataStorePlaylistStore(context.applicationContext)
 
+    /** The persisted repeat/shuffle mode, read by the ViewModel at startup. */
+    fun createPlaybackModeStore(context: Context): PlaybackModeStore =
+        DataStorePlaybackModeStore(context.applicationContext)
+
     fun createSearchRepository(context: Context): SearchRepository {
         val appContext = context.applicationContext
         val cookieJar = CookieJar()

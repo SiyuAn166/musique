@@ -37,12 +37,14 @@ class MainActivity : ComponentActivity() {
         val qualityPreferenceStore =
             BiliDependencies.createQualityPreferenceStore(applicationContext)
         val playlistStore = BiliDependencies.createPlaylistStore(applicationContext)
+        val playbackModeStore = BiliDependencies.createPlaybackModeStore(applicationContext)
         setContent {
             MusiqueApp(
                 repository = repository,
                 playerEngine = playerEngine,
                 qualityPreferenceStore = qualityPreferenceStore,
                 playlistStore = playlistStore,
+                playbackModeStore = playbackModeStore,
             )
         }
     }

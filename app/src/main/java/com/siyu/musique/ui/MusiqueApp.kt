@@ -11,8 +11,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
+import com.siyu.musique.data.PlaybackModeStore
 import com.siyu.musique.data.PlaylistStore
 import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
@@ -35,6 +37,7 @@ fun MusiqueApp(
     playerEngine: PlayerEngine = NoOpPlayerEngine,
     qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
     playlistStore: PlaylistStore = InMemoryPlaylistStore(),
+    playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
@@ -44,6 +47,7 @@ fun MusiqueApp(
             playerEngine,
             qualityPreferenceStore,
             playlistStore,
+            playbackModeStore,
         ),
     )
 

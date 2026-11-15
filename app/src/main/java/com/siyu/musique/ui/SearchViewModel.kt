@@ -10,13 +10,17 @@ import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliNetworkException
 import com.siyu.musique.core.network.BiliParseException
+import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
+import com.siyu.musique.data.PlaybackMode
+import com.siyu.musique.data.PlaybackModeStore
 import com.siyu.musique.data.PlaylistStore
 import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.data.describeError
 import com.siyu.musique.model.Playlist
+import com.siyu.musique.model.RepeatMode
 import com.siyu.musique.model.Track
 import com.siyu.musique.player.NoOpPlayerEngine
 import com.siyu.musique.player.PlaybackError
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /** Why a search failed, so the UI shows a distinct message per kind. */
 enum class SearchErrorKind {
@@ -144,6 +149,8 @@ class SearchViewModel(
     private val logger: MusiqueLogger = MusiqueLog.shared,
     private val qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
     private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
+    private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
+    private val random: Random = Random.Default,
 ) : ViewModel() {
 
     private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -163,6 +170,12 @@ class SearchViewModel(
 
     private val _qualityPreference = MutableStateFlow(AudioQuality.BEST)
     val qualityPreference: StateFlow<AudioQuality> = _qualityPreference.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(RepeatMode.OFF)
+    val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
+
+    private val _shuffleEnabled = MutableStateFlow(false)
+    val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
 
     /**
      * Player volume, 0f (silent) to 1f (full). Full by default,
@@ -186,6 +199,16 @@ class SearchViewModel(
      * search list or playlist the current track was played from.
      */
     private var currentQueue: List<Track> = emptyList()
+
+    /**
+     * Tracks played before the current one, newest last, recorded
+     * only while shuffling: previous in shuffle mode walks back
+     * through this instead of the queue order. Cleared whenever a
+     * new queue is adopted, so it never points at another list's
+     * tracks. Capped, so endless skipping cannot grow it forever.
+     */
+    private val shuffleHistory: ArrayDeque<Track> = ArrayDeque()
+
     private var playJob: Job? = null
     private var loadMoreJob: Job? = null
     private var progressJob: Job? = null
@@ -208,6 +231,18 @@ class SearchViewModel(
                 .onSuccess { stored -> stored?.let { _qualityPreference.value = it } }
                 .onFailure {
                     logger.w(TAG, "quality preference load failed (${it::class.simpleName})")
+                }
+        }
+        viewModelScope.launch {
+            runCatching { playbackModeStore.load() }
+                .onSuccess { stored ->
+                    stored?.let {
+                        _repeatMode.value = it.repeatMode
+                        _shuffleEnabled.value = it.shuffleEnabled
+                    }
+                }
+                .onFailure {
+                    logger.w(TAG, "playback mode load failed (${it::class.simpleName})")
                 }
         }
         viewModelScope.launch {
@@ -255,7 +290,19 @@ class SearchViewModel(
                 if (engineIntent != playIntent) return
                 stopProgressPolling()
                 logger.i(TAG, "player ended intent=$playIntent")
-                val next = trackAfterCurrent()
+                if (_repeatMode.value == RepeatMode.ONE) {
+                    // Replay in place: seek to the start and resume
+                    // on the loaded item, no fresh URL needed. The
+                    // engine's onPlaying callback republishes the
+                    // playing state and restarts progress polling.
+                    _currentTrack.value?.let {
+                        logger.i(TAG, "player repeat one bvid=${it.id}")
+                        playerEngine.seekTo(0L)
+                        playerEngine.resume()
+                    }
+                    return
+                }
+                val next = pickNextTrack()
                 if (next != null) {
                     logger.i(TAG, "player auto-advance bvid=${next.id}")
                     playKeepingQueue(next)
@@ -390,6 +437,7 @@ class SearchViewModel(
                 "playlist=${playlist.id}",
         )
         currentQueue = playlist.tracks
+        shuffleHistory.clear()
         playAt(track, startPositionMs = 0L, resumePlaying = true)
     }
 
@@ -413,6 +461,7 @@ class SearchViewModel(
         val state = _searchState.value as? SearchUiState.Success ?: return
         if (state.tracks.any { it.id == track.id }) {
             currentQueue = state.tracks
+            shuffleHistory.clear()
         }
     }
 
@@ -466,6 +515,7 @@ class SearchViewModel(
                     updateTrackInList(detailed.track)
                     if (adoptPartsQueue && detailed.parts.size > 1) {
                         currentQueue = detailed.parts
+                        shuffleHistory.clear()
                         current = detailed.parts[0]
                     } else {
                         current = detailed.track
@@ -603,11 +653,79 @@ class SearchViewModel(
     }
 
     fun playNext() {
-        trackAfterCurrent()?.let { playKeepingQueue(it) }
+        pickNextTrack()?.let { playKeepingQueue(it) }
     }
 
     fun playPrevious() {
-        trackBeforeCurrent()?.let { playKeepingQueue(it) }
+        pickPreviousTrack()?.let { playKeepingQueue(it) }
+    }
+
+    /** Cycles the repeat mode OFF -> ALL -> ONE -> OFF and persists it. */
+    fun cycleRepeatMode() {
+        _repeatMode.value = _repeatMode.value.next()
+        logger.i(TAG, "repeat mode ${_repeatMode.value}")
+        persistPlaybackMode()
+    }
+
+    /** Toggles shuffle and persists it. The queue order is untouched. */
+    fun toggleShuffle() {
+        _shuffleEnabled.value = !_shuffleEnabled.value
+        logger.i(TAG, "shuffle ${_shuffleEnabled.value}")
+        persistPlaybackMode()
+    }
+
+    private fun persistPlaybackMode() {
+        val mode = PlaybackMode(_repeatMode.value, _shuffleEnabled.value)
+        viewModelScope.launch {
+            runCatching { playbackModeStore.save(mode) }
+                .onFailure {
+                    logger.w(TAG, "playback mode save failed (${it::class.simpleName})")
+                }
+        }
+    }
+
+    /**
+     * The track a next press (or auto-advance) should play. With
+     * shuffle on, a random queue member other than the current
+     * track, and the current track is pushed onto the shuffle
+     * history so previous can walk back. Otherwise the next track
+     * in queue order, wrapping to the first when repeat-all is on;
+     * null at the end of the queue with repeat off.
+     */
+    private fun pickNextTrack(): Track? {
+        val current = _currentTrack.value ?: return null
+        if (currentQueue.isEmpty()) return null
+        if (_shuffleEnabled.value) {
+            val candidates = currentQueue.filter { it.key != current.key }
+            if (shuffleHistory.size >= SHUFFLE_HISTORY_LIMIT) shuffleHistory.removeFirst()
+            shuffleHistory.addLast(current)
+            return candidates.ifEmpty { listOf(current) }.random(random)
+        }
+        val index = indexOfCurrent()
+        if (index < 0) return null
+        if (index + 1 < currentQueue.size) return currentQueue[index + 1]
+        return if (_repeatMode.value == RepeatMode.ALL) currentQueue.first() else null
+    }
+
+    /**
+     * The track a previous press should play. With shuffle on and a
+     * non-empty history, the most recently played track; otherwise
+     * the previous track in queue order, wrapping to the last when
+     * repeat-all is on; null at the start of the queue with repeat
+     * off.
+     */
+    private fun pickPreviousTrack(): Track? {
+        if (_shuffleEnabled.value && shuffleHistory.isNotEmpty()) {
+            return shuffleHistory.removeLast()
+        }
+        val index = indexOfCurrent()
+        if (index < 0) return null
+        if (index > 0) return currentQueue[index - 1]
+        return if (_repeatMode.value == RepeatMode.ALL && currentQueue.isNotEmpty()) {
+            currentQueue.last()
+        } else {
+            null
+        }
     }
 
     /**
@@ -758,19 +876,6 @@ class SearchViewModel(
         return currentQueue.indexOfFirst { it.id == current.id }
     }
 
-    /** The track after the current one in the queue, or null at the end (or with no queue). */
-    private fun trackAfterCurrent(): Track? {
-        val index = indexOfCurrent()
-        if (index < 0 || index + 1 >= currentQueue.size) return null
-        return currentQueue[index + 1]
-    }
-
-    /** The track before the current one in the queue, or null at the start (or with no queue). */
-    private fun trackBeforeCurrent(): Track? {
-        val index = indexOfCurrent()
-        if (index <= 0) return null
-        return currentQueue[index - 1]
-    }
 
     /**
      * The stored list with the default playlist guaranteed present:
@@ -835,6 +940,9 @@ class SearchViewModel(
 
         /** Progress polling cadence while playing. */
         const val PROGRESS_POLL_INTERVAL_MS: Long = 500L
+
+        /** Cap on the shuffle history, so endless skipping cannot grow it forever. */
+        private const val SHUFFLE_HISTORY_LIMIT = 50
     }
 }
 
@@ -865,12 +973,13 @@ fun mapSearchError(error: Throwable, query: String): SearchUiState.Error {
 /** Maps a playback failure (detail or play URL resolution) onto the message the player error state shows. */
 fun mapPlayerError(error: Throwable): String = describeFailure(error).first
 
-/** Factory carrying the repository, the player engine, and the quality and playlist stores into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, and the quality, playlist, and playback mode stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
     private val qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
     private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
+    private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -883,6 +992,7 @@ class SearchViewModelFactory(
             MusiqueLog.shared,
             qualityPreferenceStore,
             playlistStore,
+            playbackModeStore,
         ) as T
     }
 }

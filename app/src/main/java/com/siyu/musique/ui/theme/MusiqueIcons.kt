@@ -111,6 +111,24 @@ object MusiqueIcons {
         "M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z",
     )
 
+    /** Crossing arrows: the shuffle toggle on the player page. */
+    val Shuffle: ImageVector = icon(
+        "Shuffle",
+        "M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z",
+    )
+
+    /** Loop arrows: the repeat button (off / repeat all) on the player page. */
+    val Repeat: ImageVector = icon(
+        "Repeat",
+        "M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z",
+    )
+
+    /** Loop arrows with a 1: the repeat button in repeat-one mode. */
+    val RepeatOne: ImageVector = icon(
+        "RepeatOne",
+        "M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z",
+    )
+
     /** Trash: clear the log, delete a playlist. */
     val Delete: ImageVector = icon(
         "Delete",
