@@ -122,12 +122,18 @@ fun SearchScreen(
      * extra tap on search. The field keeps a
      * [TextFieldValue] (not a plain String) so programmatic
      * changes can place the cursor, e.g. at the end after a
-     * suggestion tap.
+     * suggestion tap. Every value is clamped into bounds
+     * first: the IME can hand back a selection past the end
+     * of the text when its composing span desyncs from a
+     * programmatic replacement (pinyin composition plus a
+     * suggestion tap), and an out-of-range selection crashes
+     * the text layout on the next focus change.
      */
     fun applyQueryField(newValue: TextFieldValue) {
-        queryField = newValue
-        viewModel.onQueryChanged(newValue.text)
-        if (newValue.text.isBlank()) viewModel.search("")
+        val safeValue = sanitizeFieldValue(newValue)
+        queryField = safeValue
+        viewModel.onQueryChanged(safeValue.text)
+        if (safeValue.text.isBlank()) viewModel.search("")
     }
 
     // System Back clears the field while a search is showing (or
@@ -217,9 +223,11 @@ fun SearchScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    queryField = TextFieldValue(
-                                        text = suggestion,
-                                        selection = TextRange(suggestion.length),
+                                    queryField = sanitizeFieldValue(
+                                        TextFieldValue(
+                                            text = suggestion,
+                                            selection = TextRange(suggestion.length),
+                                        ),
                                     )
                                     viewModel.search(suggestion)
                                 }
@@ -490,5 +498,30 @@ fun SearchScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Clamps a field value's selection and composition into the
+ * bounds of its text. The IME can return a value whose
+ * selection extends past the end of the text (its composing
+ * span desynced from a programmatic replacement), and the
+ * text layout throws on the next focus change when it tries
+ * to measure that offset. Returns the value unchanged when it
+ * is already in bounds.
+ */
+private fun sanitizeFieldValue(value: TextFieldValue): TextFieldValue {
+    val length = value.text.length
+    val selection = TextRange(
+        value.selection.start.coerceIn(0, length),
+        value.selection.end.coerceIn(0, length),
+    )
+    val composition = value.composition?.let {
+        TextRange(it.start.coerceIn(0, length), it.end.coerceIn(0, length))
+    }
+    return if (selection == value.selection && composition == value.composition) {
+        value
+    } else {
+        value.copy(selection = selection, composition = composition)
     }
 }
