@@ -75,6 +75,14 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.datastore:datastore-preferences:1.3.0")
 
+    // Step 3: Media3 ExoPlayer for streaming playback, plus the
+    // datasource artifact for CacheDataSource. Version 1.11.1
+    // verified Nov 14, 2026 against Google Maven metadata
+    // (androidx/media3 maven-metadata.xml): the latest stable;
+    // 1.12.0-beta01 is a pre-release and is skipped.
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-datasource:1.11.1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
