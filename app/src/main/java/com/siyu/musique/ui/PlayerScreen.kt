@@ -1,5 +1,7 @@
 package com.siyu.musique.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -38,14 +40,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,6 +67,10 @@ import com.siyu.musique.model.formatDuration
 import com.siyu.musique.model.formatRemaining
 import com.siyu.musique.ui.theme.MusiqueIcons
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.launch
+
+/** A downward release faster than this dismisses the page even before the drag threshold. */
+private const val DISMISS_FLING_VELOCITY_PX_PER_SECOND: Float = 1000f
 
 /**
  * Player page, approved redesign: a centered chevron-down back
@@ -82,9 +92,11 @@ import kotlin.time.Duration.Companion.milliseconds
  * generous gaps instead of crammed together. Dragging
  * the progress bar shows the dragged position and seeks on
  * release; the polled progress keeps running underneath.
- * Dragging the page down past the threshold goes back, like the
- * chevron button. Player errors show their message with a retry
- * icon button.
+ * Dragging the page down moves it with the finger; releasing
+ * past the threshold, or with a fast downward fling, slides it
+ * off the bottom and goes back, like the chevron button, and a
+ * shorter drag springs it back to rest. Player errors show
+ * their message with a retry icon button.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,23 +138,61 @@ fun PlayerScreen(
     /** Downward drag past this distance goes back. */
     val dismissThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
 
+    /**
+     * The page's vertical offset: it follows the finger 1:1
+     * while dragging, never above its rest position, then
+     * settles back to rest or slides off the bottom.
+     */
+    val dismissOffset = remember { Animatable(0f) }
+
+    /** Runs the offset snaps and settle animations from the drag callbacks. */
+    val dismissScope = rememberCoroutineScope()
+
+    /** The page height in pixels: the off-screen target for a dismiss. */
+    var pageHeightPx by remember { mutableStateOf(0) }
+
     val track = currentTrack
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
+            .onSizeChanged { pageHeightPx = it.height }
             .pointerInput(onBack, dismissThresholdPx) {
                 var dragged = 0f
+                val velocityTracker = VelocityTracker()
                 detectVerticalDragGestures(
-                    onDragStart = { dragged = 0f },
-                    onDragEnd = {
-                        if (dragged > dismissThresholdPx) onBack()
+                    onDragStart = {
+                        // A new drag takes over from wherever the
+                        // page sits, mid-settle included.
+                        dragged = dismissOffset.value
+                        dismissScope.launch { dismissOffset.stop() }
+                        velocityTracker.resetTracking()
                     },
-                    onDragCancel = { dragged = 0f },
-                    onVerticalDrag = { _, dragAmount -> dragged += dragAmount },
+                    onDragEnd = {
+                        val flingVelocity = velocityTracker.calculateVelocity().y
+                        dismissScope.launch {
+                            if (dragged > dismissThresholdPx ||
+                                flingVelocity > DISMISS_FLING_VELOCITY_PX_PER_SECOND
+                            ) {
+                                dismissOffset.animateTo(pageHeightPx.toFloat(), spring())
+                                onBack()
+                            } else {
+                                dismissOffset.animateTo(0f, spring())
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        dismissScope.launch { dismissOffset.animateTo(0f, spring()) }
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+                        dragged = (dragged + dragAmount).coerceAtLeast(0f)
+                        dismissScope.launch { dismissOffset.snapTo(dragged) }
+                    },
                 )
             }
+            .graphicsLayer { translationY = dismissOffset.value }
             .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
