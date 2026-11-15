@@ -1,7 +1,9 @@
 package com.siyu.musique
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.siyu.musique.core.logging.MusiqueLog
@@ -22,7 +24,12 @@ import com.siyu.musique.ui.MusiqueApp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is forced light, so the system bars always use dark
+        // icons, even on phones set to dark mode.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         AndroidLogSink.install()
         MusiqueLog.i("App", "Musique started")
         val repository = BiliDependencies.createSearchRepository(applicationContext)

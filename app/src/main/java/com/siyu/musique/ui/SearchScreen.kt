@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -55,7 +57,8 @@ private const val LOAD_MORE_THRESHOLD = 3
 
 /**
  * Search screen: a large "Search" title, the list icon (playlists)
- * and three-dot icon (log) at the top right, a light-grey rounded
+ * and three-dot icon (settings menu, with the debug log inside) at
+ * the top right, a light-grey rounded
  * search field, and flat result rows with hairline dividers. Search
  * triggers on the keyboard search action and on tapping the
  * magnifier icon. Tapping a row plays it (cid fill + fresh play URL
@@ -84,6 +87,9 @@ fun SearchScreen(
     /** The track waiting for a playlist choice, or null when the chooser is closed. */
     var chooserTrack by remember { mutableStateOf<Track?>(null) }
 
+    /** Whether the settings (three-dot) menu is open. The debug log lives inside it. */
+    var settingsMenuExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -108,12 +114,26 @@ fun SearchScreen(
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
-            IconButton(onClick = onOpenLog) {
-                Icon(
-                    imageVector = MusiqueIcons.MoreHoriz,
-                    contentDescription = "Debug log",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
+            Box {
+                IconButton(onClick = { settingsMenuExpanded = true }) {
+                    Icon(
+                        imageVector = MusiqueIcons.MoreHoriz,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                DropdownMenu(
+                    expanded = settingsMenuExpanded,
+                    onDismissRequest = { settingsMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Debug log") },
+                        onClick = {
+                            settingsMenuExpanded = false
+                            onOpenLog()
+                        },
+                    )
+                }
             }
         }
 

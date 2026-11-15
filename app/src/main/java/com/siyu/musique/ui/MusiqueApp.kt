@@ -1,5 +1,8 @@
 package com.siyu.musique.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -45,11 +48,17 @@ fun MusiqueApp(
     )
 
     MusiqueTheme {
-        NavHost(
-            navController = navController,
-            startDestination = "search",
-            modifier = modifier,
+        // The Surface paints the white background: without it the
+        // screens are transparent and the window background shows
+        // through, which is why the app looked black.
+        Surface(
+            color = MaterialTheme.colorScheme.background,
+            modifier = modifier.fillMaxSize(),
         ) {
+            NavHost(
+                navController = navController,
+                startDestination = "search",
+            ) {
             composable("search") {
                 SearchScreen(
                     viewModel = viewModel,
@@ -94,6 +103,7 @@ fun MusiqueApp(
                     onOpenPlayer = { navController.navigate("player") },
                     onBack = { navController.popBackStack() },
                 )
+            }
             }
         }
     }
