@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
@@ -127,7 +128,16 @@ fun MusiqueApp(
             color = MaterialTheme.colorScheme.background,
             modifier = modifier.fillMaxSize(),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            // imePadding lifts the mini bar and tab bar above
+            // the keyboard while it is open. Without it they
+            // sit under the IME window, and a tap on the
+            // keyboard's dismiss strip can fall through to the
+            // Home tab underneath.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding(),
+            ) {
                 Box(modifier = Modifier.weight(1f)) {
                     NavHost(
                         navController = navController,
