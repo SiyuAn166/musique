@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
@@ -23,7 +24,10 @@ import androidx.compose.ui.unit.dp
  * the rest of the page. Drag, tap-to-position, and accessibility
  * behavior all come from [Slider]; only the thumb and track are
  * custom. Used for both the progress bar and the volume slider.
+ * The custom thumb/track overload is still marked experimental
+ * by Material3, hence the opt-in below.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SlimSlider(
     value: Float,
