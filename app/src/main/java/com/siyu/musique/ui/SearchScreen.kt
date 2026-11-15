@@ -564,7 +564,7 @@ fun SearchScreen(
                                 val added = viewModel.addTrackToPlaylist(playlist.id, pending)
                                 chooserTrack = null
                                 addNoticeDismissJob?.cancel()
-                                addNotice = if (added) "添加成功" else "已在歌单中"
+                                addNotice = if (added) "Added" else "Already in playlist"
                                 addNoticeDismissJob = noticeScope.launch {
                                     delay(ADD_NOTICE_DURATION_MS)
                                     addNotice = null

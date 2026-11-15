@@ -144,7 +144,7 @@ fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "检查更新",
+                text = "Check for updates",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -215,7 +215,7 @@ private fun UpdateDialog(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "正在检查更新",
+                            text = "Checking for updates…",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -223,7 +223,7 @@ private fun UpdateDialog(
                 }
                 UpdateUiState.UpToDate -> {
                     Text(
-                        text = "已经是最新版本",
+                        text = "You're up to date",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -231,13 +231,13 @@ private fun UpdateDialog(
                 is UpdateUiState.Available -> {
                     Column {
                         Text(
-                            text = "发现新版本 ${state.tag}",
+                            text = "New version ${state.tag} available",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "大小 ${formatCacheSize(state.apkSize)}",
+                            text = "Size ${formatCacheSize(state.apkSize)}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -246,7 +246,7 @@ private fun UpdateDialog(
                 is UpdateUiState.Downloading -> {
                     Column {
                         Text(
-                            text = "下载中" +
+                            text = "Downloading" +
                                 (state.fraction?.let { " ${(it * 100).toInt()}%" } ?: ""),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -272,14 +272,14 @@ private fun UpdateDialog(
                 is UpdateUiState.ReadyToInstall -> {
                     Column {
                         Text(
-                            text = "下载完成",
+                            text = "Download complete",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         if (needsInstallPermission) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "需要先允许安装未知来源应用",
+                                text = "Allow installing unknown apps first",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -355,12 +355,12 @@ private fun UpdateDialog(
 
 /** The dialog line for an update failure kind. */
 private fun updateFailureMessage(kind: UpdateFailureKind): String = when (kind) {
-    UpdateFailureKind.NETWORK -> "检查失败，请检查网络后重试"
-    UpdateFailureKind.RATE_LIMITED -> "请求太频繁，请稍后再试"
-    UpdateFailureKind.PARSE -> "版本信息无法识别，请稍后再试"
-    UpdateFailureKind.MISSING_ASSET -> "最新发布中没有找到安装包"
-    UpdateFailureKind.DOWNLOAD_FAILED -> "下载失败，请重试"
-    UpdateFailureKind.INSTALL_FAILED -> "安装失败，请重试"
+    UpdateFailureKind.NETWORK -> "Check failed. Check your connection and try again."
+    UpdateFailureKind.RATE_LIMITED -> "Too many requests. Try again later."
+    UpdateFailureKind.PARSE -> "Version info unreadable. Try again later."
+    UpdateFailureKind.MISSING_ASSET -> "No install package found in the latest release."
+    UpdateFailureKind.DOWNLOAD_FAILED -> "Download failed. Try again."
+    UpdateFailureKind.INSTALL_FAILED -> "Install failed. Try again."
 }
 
 /** Human cache size: bytes, KB, or MB with one decimal. */
