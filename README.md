@@ -87,8 +87,10 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 Every push to `main` (and every manual run) builds the debug APK
 in CI: see `.github/workflows/build-apk.yml`. It checks out the
-repo, sets up Temurin JDK 17 and Gradle, runs
-`./gradlew assembleDebug`, and uploads
+repo, sets up Temurin JDK 17 and Gradle 8.13, runs
+`gradle assembleDebug` (not the wrapper: `gradle-wrapper.jar` is
+binary and cannot be pushed through the GitHub connector's UTF-8
+snapshot push), and uploads
 `app/build/outputs/apk/debug/app-debug.apk` as the `app-debug`
 artifact (30 days retention). Download it from the Actions run
 page and install it with `adb install -r app-debug.apk`.
