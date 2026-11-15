@@ -38,7 +38,11 @@ import org.junit.Test
  *
  * Every test advances until idle right after constructing the
  * ViewModel, so the initial playlist load has landed before any
- * mutation: mutations assume the load has completed.
+ * mutation: mutations assume the load has completed. The exposed
+ * playlists flow is derived (stored lists plus the synthetic
+ * Downloads playlist), so tests also advance after a mutation
+ * before reading it: a read right after a mutation still sees
+ * the previous value.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaylistViewModelTest {
@@ -99,7 +103,7 @@ class PlaylistViewModelTest {
             val store = InMemoryPlaylistStore()
             val vm = viewModel(store = store)
             advanceUntilIdle()
-            assertEquals(listOf(Playlist.default()), vm.playlists.value)
+            assertEquals(listOf(Playlist.default(), Playlist.downloads(emptyList())), vm.playlists.value)
             assertEquals(listOf(Playlist.default()), store.load())
         }
 
@@ -108,7 +112,16 @@ class PlaylistViewModelTest {
         val stored = listOf(Playlist.default(), Playlist("u1", "Mix", emptyList()))
         val vm = viewModel(store = InMemoryPlaylistStore(stored))
         advanceUntilIdle()
-        assertEquals(stored, vm.playlists.value)
+        // The synthetic Downloads playlist sits between the
+        // default and the user playlists.
+        assertEquals(
+            listOf(
+                Playlist.default(),
+                Playlist.downloads(emptyList()),
+                Playlist("u1", "Mix", emptyList()),
+            ),
+            vm.playlists.value,
+        )
     }
 
     @Test
@@ -118,7 +131,10 @@ class PlaylistViewModelTest {
             val store = InMemoryPlaylistStore(listOf(custom))
             val vm = viewModel(store = store)
             advanceUntilIdle()
-            assertEquals(listOf(Playlist.default(), custom), vm.playlists.value)
+            assertEquals(
+                listOf(Playlist.default(), Playlist.downloads(emptyList()), custom),
+                vm.playlists.value,
+            )
             assertEquals(listOf(Playlist.default(), custom), store.load())
         }
 
@@ -131,11 +147,11 @@ class PlaylistViewModelTest {
             vm.createPlaylist("  Late Night  ")
             advanceUntilIdle()
             val playlists = vm.playlists.value
-            assertEquals(2, playlists.size)
+            assertEquals(3, playlists.size)
             assertEquals("Late Night", playlists.last().name)
             assertTrue(playlists.last().tracks.isEmpty())
             assertNotEquals(Playlist.DEFAULT_ID, playlists.last().id)
-            assertEquals(playlists, store.load())
+            assertEquals(playlists.filterNot { it.isDownloads }, store.load())
         }
 
     @Test
@@ -144,7 +160,7 @@ class PlaylistViewModelTest {
         advanceUntilIdle()
         vm.createPlaylist("   ")
         advanceUntilIdle()
-        assertEquals(listOf(Playlist.default()), vm.playlists.value)
+        assertEquals(listOf(Playlist.default(), Playlist.downloads(emptyList())), vm.playlists.value)
     }
 
     @Test
@@ -155,9 +171,12 @@ class PlaylistViewModelTest {
         vm.createPlaylist("Favorites")
         advanceUntilIdle()
         val playlists = vm.playlists.value
-        assertEquals(3, playlists.size)
-        assertEquals(listOf("Favorites", "Favorites"), playlists.drop(1).map { it.name })
-        assertNotEquals(playlists[1].id, playlists[2].id)
+        assertEquals(4, playlists.size)
+        assertEquals(
+            listOf("Favorites", "Favorites"),
+            playlists.drop(2).map { it.name },
+        )
+        assertNotEquals(playlists[2].id, playlists[3].id)
     }
 
     @Test
@@ -170,7 +189,7 @@ class PlaylistViewModelTest {
         val createdId = vm.playlists.value.last().id
         vm.deletePlaylist(createdId)
         advanceUntilIdle()
-        assertEquals(listOf(Playlist.default()), vm.playlists.value)
+        assertEquals(listOf(Playlist.default(), Playlist.downloads(emptyList())), vm.playlists.value)
         assertEquals(listOf(Playlist.default()), store.load())
     }
 
@@ -180,7 +199,7 @@ class PlaylistViewModelTest {
         advanceUntilIdle()
         vm.deletePlaylist(Playlist.DEFAULT_ID)
         advanceUntilIdle()
-        assertEquals(listOf(Playlist.default()), vm.playlists.value)
+        assertEquals(listOf(Playlist.default(), Playlist.downloads(emptyList())), vm.playlists.value)
     }
 
     @Test
@@ -189,7 +208,7 @@ class PlaylistViewModelTest {
         advanceUntilIdle()
         vm.deletePlaylist("no-such-id")
         advanceUntilIdle()
-        assertEquals(listOf(Playlist.default()), vm.playlists.value)
+        assertEquals(listOf(Playlist.default(), Playlist.downloads(emptyList())), vm.playlists.value)
     }
 
     @Test
@@ -201,10 +220,10 @@ class PlaylistViewModelTest {
             val added = track("BV1ADD00001").copy(playUrl = "https://cdn.example/x.m4s")
             vm.addTrackToPlaylist(Playlist.DEFAULT_ID, added)
             advanceUntilIdle()
-            val stored = vm.playlists.value.single().tracks.single()
+            val stored = vm.playlists.value.first { it.isDefault }.tracks.single()
             assertEquals("BV1ADD00001", stored.id)
             assertEquals("", stored.playUrl)
-            assertEquals(vm.playlists.value, store.load())
+            assertEquals(vm.playlists.value.filterNot { it.isDownloads }, store.load())
         }
 
     @Test
@@ -214,7 +233,7 @@ class PlaylistViewModelTest {
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00001", cid = "5"))
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00001", cid = "5"))
         advanceUntilIdle()
-        assertEquals(1, vm.playlists.value.single().tracks.size)
+        assertEquals(1, vm.playlists.value.first { it.isDefault }.tracks.size)
     }
 
     @Test
@@ -224,7 +243,7 @@ class PlaylistViewModelTest {
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1PART0001", cid = "5"))
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1PART0001", cid = "6"))
         advanceUntilIdle()
-        assertEquals(2, vm.playlists.value.single().tracks.size)
+        assertEquals(2, vm.playlists.value.first { it.isDefault }.tracks.size)
     }
 
     @Test
@@ -233,7 +252,7 @@ class PlaylistViewModelTest {
         advanceUntilIdle()
         vm.addTrackToPlaylist("no-such-id", track("BV1X"))
         advanceUntilIdle()
-        assertEquals(listOf(Playlist.default()), vm.playlists.value)
+        assertEquals(listOf(Playlist.default(), Playlist.downloads(emptyList())), vm.playlists.value)
     }
 
     @Test
@@ -268,8 +287,8 @@ class PlaylistViewModelTest {
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, second)
         vm.removeTrackFromPlaylist(Playlist.DEFAULT_ID, first.key)
         advanceUntilIdle()
-        assertEquals(listOf(second), vm.playlists.value.single().tracks)
-        assertEquals(vm.playlists.value, store.load())
+        assertEquals(listOf(second), vm.playlists.value.first { it.isDefault }.tracks)
+        assertEquals(vm.playlists.value.filterNot { it.isDownloads }, store.load())
     }
 
     @Test
@@ -282,7 +301,7 @@ class PlaylistViewModelTest {
             vm.removeTrackFromPlaylist(Playlist.DEFAULT_ID, "BV1NOPE:1")
             vm.removeTrackFromPlaylist("no-such-id", kept.key)
             advanceUntilIdle()
-            assertEquals(listOf(kept), vm.playlists.value.single().tracks)
+            assertEquals(listOf(kept), vm.playlists.value.first { it.isDefault }.tracks)
         }
 
     @Test
@@ -292,7 +311,8 @@ class PlaylistViewModelTest {
         val track = track("BV1ADD00001")
         assertTrue(vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track))
         assertFalse(vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track))
-        assertEquals(listOf(track), vm.playlists.value.single().tracks)
+        advanceUntilIdle()
+        assertEquals(listOf(track), vm.playlists.value.first { it.isDefault }.tracks)
     }
 
     @Test
@@ -309,7 +329,8 @@ class PlaylistViewModelTest {
                     track("BV1DUP00001", cid = "28139389900"),
                 ),
             )
-            assertEquals(1, vm.playlists.value.single().tracks.size)
+            advanceUntilIdle()
+            assertEquals(1, vm.playlists.value.first { it.isDefault }.tracks.size)
         }
 
     @Test
@@ -326,7 +347,8 @@ class PlaylistViewModelTest {
             assertFalse(
                 vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00002", cid = "")),
             )
-            assertEquals(1, vm.playlists.value.single().tracks.size)
+            advanceUntilIdle()
+            assertEquals(1, vm.playlists.value.first { it.isDefault }.tracks.size)
         }
 
     @Test
@@ -340,7 +362,8 @@ class PlaylistViewModelTest {
             assertTrue(
                 vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00003", cid = "2")),
             )
-            assertEquals(2, vm.playlists.value.single().tracks.size)
+            advanceUntilIdle()
+            assertEquals(2, vm.playlists.value.first { it.isDefault }.tracks.size)
         }
 
     @Test
@@ -353,8 +376,8 @@ class PlaylistViewModelTest {
             val store = InMemoryPlaylistStore(listOf(stored))
             val vm = viewModel(store = store)
             advanceUntilIdle()
-            assertEquals(listOf(first, kept), vm.playlists.value.single().tracks)
-            assertEquals(vm.playlists.value, store.load())
+            assertEquals(listOf(first, kept), vm.playlists.value.first { it.isDefault }.tracks)
+            assertEquals(vm.playlists.value.filterNot { it.isDownloads }, store.load())
         }
 
     @Test
@@ -362,7 +385,7 @@ class PlaylistViewModelTest {
         val vm = viewModel()
         advanceUntilIdle()
         assertFalse(vm.addTrackToPlaylist("no-such-id", track("BV1ADD00002")))
-        assertTrue(vm.playlists.value.single().tracks.isEmpty())
+        assertTrue(vm.playlists.value.first { it.isDefault }.tracks.isEmpty())
     }
 
     @Test
@@ -382,8 +405,8 @@ class PlaylistViewModelTest {
                 setOf(first.key, third.key, "BV1NOPE:1"),
             )
             advanceUntilIdle()
-            assertEquals(listOf(second), vm.playlists.value.single().tracks)
-            assertEquals(vm.playlists.value, store.load())
+            assertEquals(listOf(second), vm.playlists.value.first { it.isDefault }.tracks)
+            assertEquals(vm.playlists.value.filterNot { it.isDownloads }, store.load())
         }
 
     @Test
@@ -395,7 +418,7 @@ class PlaylistViewModelTest {
             vm.addTrackToPlaylist(Playlist.DEFAULT_ID, kept)
             vm.removeTracksFromPlaylist(Playlist.DEFAULT_ID, emptySet())
             advanceUntilIdle()
-            assertEquals(listOf(kept), vm.playlists.value.single().tracks)
+            assertEquals(listOf(kept), vm.playlists.value.first { it.isDefault }.tracks)
         }
 
     @Test
@@ -411,7 +434,8 @@ class PlaylistViewModelTest {
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, first)
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, second)
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, third)
-        val playlist = vm.playlists.value.single()
+        advanceUntilIdle()
+        val playlist = vm.playlists.value.first { it.isDefault }
         vm.playFromPlaylist(first, playlist)
         advanceUntilIdle()
         engine.emitPlaying()
@@ -431,9 +455,10 @@ class PlaylistViewModelTest {
             advanceUntilIdle()
             val searchTracks = (vm.searchState.value as SearchUiState.Success).tracks
             vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1PL000001"))
+            advanceUntilIdle()
             vm.playFromPlaylist(
                 track("BV1PL000001"),
-                vm.playlists.value.single(),
+                vm.playlists.value.first { it.isDefault },
             )
             advanceUntilIdle()
             vm.play(searchTracks[0])
@@ -455,12 +480,14 @@ class PlaylistViewModelTest {
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, first)
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, second)
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, third)
-        vm.playFromPlaylist(first, vm.playlists.value.single())
+        advanceUntilIdle()
+        vm.playFromPlaylist(first, vm.playlists.value.first { it.isDefault })
         advanceUntilIdle()
         // Remove the next track from the playlist while playing: the
         // snapshot queue still holds it, so it plays next.
         vm.removeTrackFromPlaylist(Playlist.DEFAULT_ID, second.key)
-        assertEquals(listOf(first, third), vm.playlists.value.single().tracks)
+        advanceUntilIdle()
+        assertEquals(listOf(first, third), vm.playlists.value.first { it.isDefault }.tracks)
         engine.emitPlaying()
         engine.emitEnded()
         advanceUntilIdle()
@@ -476,7 +503,8 @@ class PlaylistViewModelTest {
         val second = track("BV1PREV0002")
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, first)
         vm.addTrackToPlaylist(Playlist.DEFAULT_ID, second)
-        vm.playFromPlaylist(second, vm.playlists.value.single())
+        advanceUntilIdle()
+        vm.playFromPlaylist(second, vm.playlists.value.first { it.isDefault })
         advanceUntilIdle()
         vm.playPrevious()
         advanceUntilIdle()
@@ -493,13 +521,14 @@ class PlaylistViewModelTest {
             advanceUntilIdle()
             val added = track("BV1NOCID001", cid = "")
             vm.addTrackToPlaylist(Playlist.DEFAULT_ID, added)
-            vm.playFromPlaylist(added, vm.playlists.value.single())
+            advanceUntilIdle()
+            vm.playFromPlaylist(added, vm.playlists.value.first { it.isDefault })
             advanceUntilIdle()
             assertEquals(1, repository.detailCalls)
             assertEquals(1, engine.playCalls.size)
             assertEquals("999", vm.currentTrack.value?.cid)
             // The stored playlist keeps the track as added; the cid
             // fill is playback-time only.
-            assertEquals("", vm.playlists.value.single().tracks.single().cid)
+            assertEquals("", vm.playlists.value.first { it.isDefault }.tracks.single().cid)
         }
 }

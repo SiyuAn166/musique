@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -25,12 +24,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.BackHandler
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -61,12 +57,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.model.Track
 import com.siyu.musique.ui.theme.MusiqueIcons
-import com.siyu.musique.ui.theme.MusiqueScriptFamily
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -78,53 +72,41 @@ private const val LOAD_MORE_THRESHOLD = 3
 /** How long the add-to-playlist notice stays up. */
 private const val ADD_NOTICE_DURATION_MS: Long = 2000L
 
-/** How far the add notice floats above the bottom of the screen: clears the mini player bar. */
-private const val ADD_NOTICE_BOTTOM_OFFSET_DP: Int = 88
+/** How far the add notice floats above the bottom of the search content: the shared mini player bar sits just below this screen, so a small offset floats the pill just above it. */
+private const val ADD_NOTICE_BOTTOM_OFFSET_DP: Int = 24
 
 /**
- * Search screen: the script "Musique" wordmark at the top left
- * with the three-dot icon at the top right (menu: downloads,
- * settings, and the debug log inside), a light-grey capsule
- * search field,
- * and flat result rows with hairline dividers. Search
+ * Search tab: a light-grey capsule search field at the top and
+ * flat result rows with hairline dividers, nothing else. Search
  * triggers on the keyboard search action and on tapping the
  * magnifier icon. Typing shows a suggestion dropdown from
  * Bilibili's suggest API under the field; tapping a suggestion
- * searches it. Clearing the field returns to the home playlists,
- * and so does system Back while a search is showing.
+ * searches it. Clearing the field empties the search, and so
+ * does system Back while a search is showing.
  * Tapping a row plays it (cid fill + fresh play URL
  * first); the plus icon on a row opens the playlist chooser, and
  * adding shows a short popup notice (a different one when the
  * track is already in the playlist).
  * Search errors show a distinct message per failure kind with a
  * retry icon button; player errors show their own message with a
- * retry icon button above the mini player bar.
+ * retry icon button above the mini player bar. The shared mini
+ * player bar and the tab bar sit below this screen, owned by
+ * the app shell.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
-    onOpenPlayer: () -> Unit,
-    onOpenPlaylistDetail: (String) -> Unit = {},
-    onOpenLog: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenDownloads: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
     val suggestions by viewModel.suggestions.collectAsStateWithLifecycle()
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
-    val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
-    val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     var queryField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
-
-    var showCreatePlaylistDialog by remember { mutableStateOf(false) }
-    var newPlaylistName by remember { mutableStateOf("") }
 
     /** The track waiting for a playlist choice, or null when the chooser is closed. */
     var chooserTrack by remember { mutableStateOf<Track?>(null) }
@@ -134,13 +116,10 @@ fun SearchScreen(
     var addNoticeDismissJob by remember { mutableStateOf<Job?>(null) }
     val noticeScope = rememberCoroutineScope()
 
-    /** Whether the settings (three-dot) menu is open. Settings and the debug log live inside it. */
-    var settingsMenuExpanded by remember { mutableStateOf(false) }
-
     /**
      * Applies a field value: suggestions follow typing, and
-     * clearing the field returns to the home playlists at once,
-     * with no extra tap on search. The field keeps a
+     * clearing the field empties the search at once, with no
+     * extra tap on search. The field keeps a
      * [TextFieldValue] (not a plain String) so programmatic
      * changes can place the cursor, e.g. at the end after a
      * suggestion tap.
@@ -151,9 +130,9 @@ fun SearchScreen(
         if (newValue.text.isBlank()) viewModel.search("")
     }
 
-    // System Back returns to the home playlists while a search is
-    // showing (or text is typed); a second Back on clean home
-    // exits the app as usual.
+    // System Back clears the field while a search is showing (or
+    // text is typed); a Back on a clean search tab pops back to
+    // the Home tab as usual.
     BackHandler(
         enabled = searchState != SearchUiState.Idle || queryField.text.isNotBlank(),
     ) {
@@ -165,56 +144,6 @@ fun SearchScreen(
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Musique",
-                fontFamily = MusiqueScriptFamily,
-                fontSize = 40.sp,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-            Box {
-                IconButton(onClick = { settingsMenuExpanded = true }) {
-                    Icon(
-                        imageVector = MusiqueIcons.MoreHoriz,
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                DropdownMenu(
-                    expanded = settingsMenuExpanded,
-                    onDismissRequest = { settingsMenuExpanded = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Downloads") },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            onOpenDownloads()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Settings") },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            onOpenSettings()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Debug log") },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            onOpenLog()
-                        },
-                    )
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.height(8.dp))
         TextField(
             value = queryField,
@@ -319,43 +248,9 @@ fun SearchScreen(
 
         when (val state = searchState) {
             SearchUiState.Idle -> {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Playlists",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Spacer(modifier = Modifier.weight(1f))
-                            IconButton(
-                                onClick = {
-                                    newPlaylistName = ""
-                                    showCreatePlaylistDialog = true
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = MusiqueIcons.Add,
-                                    contentDescription = "Create playlist",
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        }
-                    }
-                    items(playlists, key = { playlist -> playlist.id }) { playlist ->
-                        PlaylistRow(
-                            playlist = playlist,
-                            onClick = { onOpenPlaylistDetail(playlist.id) },
-                        )
-                    }
-                }
+                // No query yet: the field above is the whole
+                // screen until the user searches.
+                Box(modifier = Modifier.weight(1f))
             }
             SearchUiState.Loading -> {
                 Box(
@@ -494,19 +389,6 @@ fun SearchScreen(
                 }
             }
         }
-
-        MiniPlayerBar(
-            track = currentTrack,
-            isPlaying = isPlaying,
-            playerState = playerState,
-            progress = progress,
-            onTogglePlayPause = { viewModel.togglePlayPause() },
-            onRetry = { viewModel.retryPlayback() },
-            onOpenPlayer = onOpenPlayer,
-            onPrevious = { viewModel.playPrevious() },
-            onNext = { viewModel.playNext() },
-            qualityLabel = resolvedQualityLabel,
-        )
     }
 
     // Add notice: a small black pill floating above the mini
@@ -550,7 +432,8 @@ fun SearchScreen(
 
     // Playlist chooser: tapping a playlist adds the track, shows a
     // short notice (a different one when the track is already
-    // present), and closes.
+    // present), and closes. The Downloads playlist is not
+    // offered: it fills from downloads alone.
     val pending = chooserTrack
     if (pending != null) {
         ModalBottomSheet(
@@ -568,7 +451,7 @@ fun SearchScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
-                playlists.forEach { playlist ->
+                playlists.filterNot { it.isDownloads }.forEach { playlist ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -607,48 +490,5 @@ fun SearchScreen(
                 }
             }
         }
-    }
-
-    // Create playlist dialog, from the plus icon on the home
-    // playlists header. Blank names are rejected, same as the
-    // playlists screen's dialog.
-    if (showCreatePlaylistDialog) {
-        AlertDialog(
-            onDismissRequest = { showCreatePlaylistDialog = false },
-            title = { Text("New playlist") },
-            text = {
-                TextField(
-                    value = newPlaylistName,
-                    onValueChange = { newPlaylistName = it },
-                    placeholder = { Text("Playlist name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                IconButton(
-                    enabled = newPlaylistName.isNotBlank(),
-                    onClick = {
-                        viewModel.createPlaylist(newPlaylistName)
-                        showCreatePlaylistDialog = false
-                    },
-                ) {
-                    Icon(
-                        imageVector = MusiqueIcons.Check,
-                        contentDescription = "Create",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            },
-            dismissButton = {
-                IconButton(onClick = { showCreatePlaylistDialog = false }) {
-                    Icon(
-                        imageVector = MusiqueIcons.Clear,
-                        contentDescription = "Cancel",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            },
-        )
     }
 }

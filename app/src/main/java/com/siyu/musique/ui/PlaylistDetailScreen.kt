@@ -42,23 +42,22 @@ import com.siyu.musique.ui.theme.MusiqueIcons
  * minus icon at the top removes all selected songs at once.
  * Tapping the button again leaves selection mode and clears the
  * selection. User-created playlists get a trash icon to delete
- * the whole playlist; the default playlist cannot be deleted. An
- * empty playlist shows a short empty message.
+ * the whole playlist; the default playlist and the Downloads
+ * playlist cannot be deleted. Removing songs from the Downloads
+ * playlist deletes the downloaded files as well. An empty
+ * playlist shows a short empty message. The shared mini player
+ * bar sits below this screen, owned by the app shell.
  */
 @Composable
 fun PlaylistDetailScreen(
     viewModel: SearchViewModel,
     playlistId: String,
-    onOpenPlayer: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val downloadRecords by viewModel.downloadRecords.collectAsStateWithLifecycle()
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
-    val playerState by viewModel.playerState.collectAsStateWithLifecycle()
-    val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
-    val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
 
     val playlist = playlists.firstOrNull { it.id == playlistId }
 
@@ -109,7 +108,7 @@ fun PlaylistDetailScreen(
                     )
                 }
             }
-            if (playlist != null && !playlist.isDefault) {
+            if (playlist != null && !playlist.isDefault && !playlist.isDownloads) {
                 IconButton(
                     onClick = {
                         viewModel.deletePlaylist(playlist.id)
@@ -126,7 +125,16 @@ fun PlaylistDetailScreen(
             if (playlist != null && selectedKeys.isNotEmpty()) {
                 IconButton(
                     onClick = {
-                        viewModel.removeTracksFromPlaylist(playlist.id, selectedKeys)
+                        if (playlist.isDownloads) {
+                            // Deleting a download removes every
+                            // file and record for the song, at
+                            // every downloaded quality.
+                            downloadRecords
+                                .filter { it.track.key in selectedKeys }
+                                .forEach { viewModel.deleteDownload(it) }
+                        } else {
+                            viewModel.removeTracksFromPlaylist(playlist.id, selectedKeys)
+                        }
                         selectedKeys = emptySet()
                     },
                 ) {
@@ -176,7 +184,11 @@ fun PlaylistDetailScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "No songs yet. Add songs from search.",
+                        text = if (playlist.isDownloads) {
+                            "No downloads yet. Download songs from the player page."
+                        } else {
+                            "No songs yet. Add songs from search."
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -235,22 +247,6 @@ fun PlaylistDetailScreen(
                     }
                 }
             }
-        }
-
-        val track = currentTrack
-        if (track != null) {
-            MiniPlayerBar(
-                track = track,
-                isPlaying = isPlaying,
-                playerState = playerState,
-                progress = progress,
-                onTogglePlayPause = { viewModel.togglePlayPause() },
-                onRetry = { viewModel.retryPlayback() },
-                onOpenPlayer = onOpenPlayer,
-                onPrevious = { viewModel.playPrevious() },
-                onNext = { viewModel.playNext() },
-                qualityLabel = resolvedQualityLabel,
-            )
         }
     }
 }

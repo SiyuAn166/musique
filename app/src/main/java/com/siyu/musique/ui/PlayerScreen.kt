@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -64,7 +63,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * icon, a large square cover with a soft shadow, a large bold
  * title + grey artist, a slim black capsule progress bar with
  * elapsed time left and remaining (negative) time right, black
- * skip icons around one large black pause circle, a full-width
+ * skip icons around one large plain play/pause icon, a full-width
  * slim volume slider with speaker icons at both ends, and the
  * quality chip at the bottom right, with the queue button and
  * the download button at the bottom left: the queue button opens
@@ -72,8 +71,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * highlighted, tapping a row jumps to it; the download button
  * downloads the current track at the current quality (a spinner
  * while downloading, a check once it is downloaded).
- * The controls row is shuffle, skip-previous, the pause circle,
- * skip-next, repeat: the shuffle and repeat buttons are grey
+ * The controls row is shuffle, skip-previous, the play/pause
+ * icon, skip-next, repeat: the shuffle and repeat buttons are grey
  * when off and black when on, and the repeat button cycles
  * off, repeat all, repeat one. Sections are spread out with
  * generous gaps instead of crammed together. Dragging
@@ -287,19 +286,12 @@ fun PlayerScreen(
                     modifier = Modifier.size(44.dp),
                 )
             }
+            // Plain icon, same flat style as the skip icons, only
+            // larger: no filled circle, no background shape.
             IconButton(
                 onClick = { viewModel.togglePlayPause() },
                 enabled = track != null || queue.isNotEmpty(),
-                modifier = Modifier
-                    .size(72.dp)
-                    .background(
-                        if (track != null || queue.isNotEmpty()) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                        },
-                        CircleShape,
-                    ),
+                modifier = Modifier.size(72.dp),
             ) {
                 Icon(
                     imageVector = if (isPlaying) {
@@ -308,8 +300,12 @@ fun PlayerScreen(
                         MusiqueIcons.PlayArrow
                     },
                     contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.size(32.dp),
+                    tint = if (track != null || queue.isNotEmpty()) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    },
+                    modifier = Modifier.size(56.dp),
                 )
             }
             IconButton(
@@ -518,23 +514,30 @@ fun PlayerScreen(
         }
 
         // Playing queue as a tree: the queue in order, with the
-        // playing video's parts as indented child rows beneath
-        // it, the current track highlighted, tapping a row jumps
-        // to it (tapping the loaded track does nothing, same as
-        // everywhere). Only the playing video expands; there is
-        // no manual expand or collapse.
+        // playing video's parts as indented compact child rows
+        // beneath it (no covers), the current track highlighted.
+        // Tapping a video row with known parts only expands or
+        // collapses its parts, never plays; only tapping a
+        // specific part row plays it. Rows without known parts
+        // play on tap as usual. The parts start expanded whenever
+        // the sheet opens and whenever the video changes.
         if (queueSheetOpen) {
             ModalBottomSheet(
                 onDismissRequest = { queueSheetOpen = false },
                 sheetState = rememberModalBottomSheetState(),
             ) {
+                var partsExpanded by remember(track?.id) { mutableStateOf(true) }
                 // One flattened list: each queue row, followed by
-                // its parts when it is the playing video.
-                val sheetRows = remember(queue, currentParts, track) {
+                // its parts when it is the playing video and the
+                // parts are expanded.
+                val sheetRows = remember(queue, currentParts, track, partsExpanded) {
                     buildList {
                         for (row in queue) {
                             add(QueueSheetRow.Video(row))
-                            if (row.id == track?.id && currentParts.size > 1) {
+                            if (row.id == track?.id &&
+                                currentParts.size > 1 &&
+                                partsExpanded
+                            ) {
                                 for (part in currentParts) {
                                     add(QueueSheetRow.Part(part))
                                 }
@@ -563,18 +566,47 @@ fun PlayerScreen(
                         key = { _, sheetRow -> sheetRow.key },
                     ) { index, sheetRow ->
                         when (sheetRow) {
-                            is QueueSheetRow.Video -> SongRow(
-                                track = sheetRow.track,
-                                // Rows are videos: match by video
-                                // id, so the row stays highlighted
-                                // while any of its parts plays.
-                                isCurrent = sheetRow.track.id == track?.id,
-                                onClick = {
-                                    viewModel.playFromQueue(sheetRow.track)
-                                    queueSheetOpen = false
-                                },
-                                trailing = {},
-                            )
+                            is QueueSheetRow.Video -> {
+                                // Only the playing video has known
+                                // parts; its row toggles them and
+                                // never plays, with a chevron
+                                // showing the state. Every other
+                                // row plays on tap.
+                                val hasParts = sheetRow.track.id == track?.id &&
+                                    currentParts.size > 1
+                                SongRow(
+                                    track = sheetRow.track,
+                                    // Rows are videos: match by video
+                                    // id, so the row stays highlighted
+                                    // while any of its parts plays.
+                                    isCurrent = sheetRow.track.id == track?.id,
+                                    onClick = {
+                                        if (hasParts) {
+                                            partsExpanded = !partsExpanded
+                                        } else {
+                                            viewModel.playFromQueue(sheetRow.track)
+                                            queueSheetOpen = false
+                                        }
+                                    },
+                                    trailing = {
+                                        if (hasParts) {
+                                            Icon(
+                                                imageVector = if (partsExpanded) {
+                                                    MusiqueIcons.ChevronDown
+                                                } else {
+                                                    MusiqueIcons.ChevronRight
+                                                },
+                                                contentDescription = if (partsExpanded) {
+                                                    "Collapse parts"
+                                                } else {
+                                                    "Expand parts"
+                                                },
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
 
                             is QueueSheetRow.Part -> SongRow(
                                 track = sheetRow.track,
@@ -587,18 +619,22 @@ fun PlayerScreen(
                                 modifier = Modifier.padding(
                                     start = QUEUE_PART_INDENT_DP.dp,
                                 ),
+                                compact = true,
                             )
                         }
                         if (index < sheetRows.lastIndex) {
+                            // A part row has no cover, so its
+                            // divider starts at its text: the
+                            // indent plus the row's own start
+                            // padding. A video row keeps the
+                            // cover-aligned inset.
+                            val dividerStartDp = if (sheetRow is QueueSheetRow.Part) {
+                                QUEUE_PART_INDENT_DP + SONG_ROW_HORIZONTAL_PADDING_DP
+                            } else {
+                                SONG_ROW_DIVIDER_START_DP
+                            }
                             HorizontalDivider(
-                                modifier = Modifier.padding(
-                                    start = (SONG_ROW_DIVIDER_START_DP +
-                                        if (sheetRow is QueueSheetRow.Part) {
-                                            QUEUE_PART_INDENT_DP
-                                        } else {
-                                            0
-                                        }).dp,
-                                ),
+                                modifier = Modifier.padding(start = dividerStartDp.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant,
                             )
                         }

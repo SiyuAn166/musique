@@ -1,14 +1,17 @@
 package com.siyu.musique.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,15 +27,17 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 import java.util.Locale
 
 /**
- * Settings, reached from the three-dot menu on the search screen.
- * For now it holds one thing: the cache size (audio + covers) with
- * a clear button. The size is measured on every entry; clearing
- * re-measures so the freed size shows at once.
+ * Settings tab: the cache size (audio + covers) with a clear
+ * button, and the debug log entry. No title, no back chevron:
+ * it is a top-level tab. The size is measured on every entry;
+ * clearing re-measures so the freed size shows at once. The
+ * shared mini player bar and the tab bar sit below this screen,
+ * owned by the app shell.
  */
 @Composable
 fun SettingsScreen(
     viewModel: SearchViewModel,
-    onBack: () -> Unit,
+    onOpenLog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cacheSizeBytes by viewModel.cacheSizeBytes.collectAsStateWithLifecycle()
@@ -47,19 +52,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = MusiqueIcons.ChevronLeft,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
+        Spacer(modifier = Modifier.height(8.dp))
 
         Row(
             modifier = Modifier
@@ -88,6 +81,31 @@ fun SettingsScreen(
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
+        }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenLog)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Debug log",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = MusiqueIcons.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

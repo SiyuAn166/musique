@@ -28,16 +28,32 @@ import com.siyu.musique.model.formatDuration
 /** The cover size in song rows, shared with the divider inset below. */
 internal const val SONG_ROW_COVER_SIZE_DP: Int = 56
 
+/** The horizontal padding of every song row, shared with the divider insets. */
+internal const val SONG_ROW_HORIZONTAL_PADDING_DP: Int = 16
+
+/** The vertical padding of a regular song row. */
+internal const val SONG_ROW_VERTICAL_PADDING_DP: Int = 12
+
+/** The tighter vertical padding of a compact song row (part rows in the queue sheet). */
+internal const val SONG_ROW_COMPACT_VERTICAL_PADDING_DP: Int = 8
+
+/** The gap between the cover and the text in a regular song row. */
+internal const val SONG_ROW_COVER_GAP_DP: Int = 12
+
 /** The hairline divider inset: row padding + cover + gap, so dividers start at the text. */
-internal const val SONG_ROW_DIVIDER_START_DP: Int = 84
+internal const val SONG_ROW_DIVIDER_START_DP: Int =
+    SONG_ROW_HORIZONTAL_PADDING_DP + SONG_ROW_COVER_SIZE_DP + SONG_ROW_COVER_GAP_DP
 
 /**
- * One flat song row, shared by the search results and the playlist
- * detail screen: a small square cover with slightly rounded corners,
- * title + artist, duration on the right, and a caller-supplied
- * trailing icon action (add on search, remove on playlist detail).
- * The current track's title takes the accent color. The caller draws
- * the hairline divider between rows.
+ * One flat song row, shared by the search results, the playlist
+ * detail screen, and the queue sheet: a small square cover with
+ * slightly rounded corners, title + artist, duration on the
+ * right, and a caller-supplied trailing icon action (add on
+ * search, remove on playlist detail). The current track's title
+ * is bold. The caller draws the hairline divider between rows.
+ * A [compact] row skips the cover entirely and tightens the
+ * vertical padding: the indented part rows in the queue sheet,
+ * where the video's cover already shows on the parent row.
  */
 @Composable
 fun SongRow(
@@ -46,40 +62,50 @@ fun SongRow(
     onClick: () -> Unit,
     trailing: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(
+                horizontal = SONG_ROW_HORIZONTAL_PADDING_DP.dp,
+                vertical = if (compact) {
+                    SONG_ROW_COMPACT_VERTICAL_PADDING_DP.dp
+                } else {
+                    SONG_ROW_VERTICAL_PADDING_DP.dp
+                },
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (track.cover.isNotEmpty()) {
-            AsyncImage(
-                model = track.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(SONG_ROW_COVER_SIZE_DP.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(SONG_ROW_COVER_SIZE_DP.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = track.title.firstOrNull()?.toString() ?: "?",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (!compact) {
+            if (track.cover.isNotEmpty()) {
+                AsyncImage(
+                    model = track.cover,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(SONG_ROW_COVER_SIZE_DP.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clip(RoundedCornerShape(8.dp)),
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(SONG_ROW_COVER_SIZE_DP.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = track.title.firstOrNull()?.toString() ?: "?",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+            Spacer(modifier = Modifier.width(SONG_ROW_COVER_GAP_DP.dp))
         }
-        Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = track.title,

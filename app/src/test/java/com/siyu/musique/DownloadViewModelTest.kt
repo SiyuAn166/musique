@@ -16,6 +16,7 @@ import com.siyu.musique.data.DetailedTrack
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.data.downloadFileName
+import com.siyu.musique.model.Playlist
 import com.siyu.musique.model.Track
 import com.siyu.musique.player.FakePlayerEngine
 import com.siyu.musique.player.PlaybackControlsRegistry
@@ -580,7 +581,7 @@ class DownloadViewModelTest {
         }
 
     @Test
-    fun `playFromDownloads adopts the downloads list as the queue and plays from file`() =
+    fun `playing from the downloads playlist adopts the downloads list as the queue and plays from file`() =
         runTest(testDispatcher) {
             val trackA = track("BV1a", "111")
             val trackB = track("BV1b", "222")
@@ -597,7 +598,8 @@ class DownloadViewModelTest {
             )
             advanceUntilIdle()
 
-            vm.playFromDownloads(trackA)
+            val downloads = vm.playlists.value.first { it.id == Playlist.DOWNLOADS_ID }
+            vm.playFromPlaylist(trackA, downloads)
             advanceUntilIdle()
 
             assertEquals(listOf(trackA, trackB), vm.queue.value)
@@ -610,24 +612,26 @@ class DownloadViewModelTest {
         }
 
     @Test
-    fun `playFromDownloads on the loaded track is a no-op`() = runTest(testDispatcher) {
-        val track = track("BV1a", "111")
-        val local = record(track, 30280)
-        seedFile(local)
-        val engine = FakePlayerEngine()
-        val vm = viewModel(
-            engine,
-            DownloadRepository(),
-            InMemoryDownloadStore(listOf(local)),
-            WritingDownloader(),
-        )
-        advanceUntilIdle()
-        vm.play(track)
-        advanceUntilIdle()
-        assertEquals(1, engine.playCalls.size)
+    fun `playing from the downloads playlist on the loaded track is a no-op`() =
+        runTest(testDispatcher) {
+            val track = track("BV1a", "111")
+            val local = record(track, 30280)
+            seedFile(local)
+            val engine = FakePlayerEngine()
+            val vm = viewModel(
+                engine,
+                DownloadRepository(),
+                InMemoryDownloadStore(listOf(local)),
+                WritingDownloader(),
+            )
+            advanceUntilIdle()
+            vm.play(track)
+            advanceUntilIdle()
+            assertEquals(1, engine.playCalls.size)
 
-        vm.playFromDownloads(track)
-        advanceUntilIdle()
-        assertEquals(1, engine.playCalls.size)
-    }
+            val downloads = vm.playlists.value.first { it.id == Playlist.DOWNLOADS_ID }
+            vm.playFromPlaylist(track, downloads)
+            advanceUntilIdle()
+            assertEquals(1, engine.playCalls.size)
+        }
 }

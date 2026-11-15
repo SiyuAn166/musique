@@ -16,6 +16,12 @@ import java.util.UUID
  * they are resolved fresh on every play and never persisted. A
  * track's cid may be empty when it was added from search results;
  * playing it resolves the details first, through the existing flow.
+ *
+ * One more playlist is synthetic, never stored: the Downloads
+ * playlist ([DOWNLOADS_ID]), derived from the download records by
+ * the ViewModel and shown right after the default playlist. It
+ * auto-fills when a song downloads, cannot be deleted, and
+ * removing a song from it deletes the downloaded file.
  */
 data class Playlist(
     /** Stable identity. [DEFAULT_ID] for the default playlist, a UUID otherwise. */
@@ -31,6 +37,10 @@ data class Playlist(
     val isDefault: Boolean
         get() = id == DEFAULT_ID
 
+    /** True only for the synthetic Downloads playlist, which cannot be deleted or edited by hand. */
+    val isDownloads: Boolean
+        get() = id == DOWNLOADS_ID
+
     /** The song count the playlist rows show. */
     val trackCount: Int
         get() = tracks.size
@@ -42,8 +52,18 @@ data class Playlist(
         /** The name of the default playlist, created on first launch. */
         const val DEFAULT_NAME: String = "Default Playlist"
 
+        /** The fixed id of the synthetic Downloads playlist. */
+        const val DOWNLOADS_ID: String = "downloads"
+
+        /** The name of the synthetic Downloads playlist. */
+        const val DOWNLOADS_NAME: String = "Downloads"
+
         /** The default playlist, empty. Created on first launch. */
         fun default(): Playlist = Playlist(id = DEFAULT_ID, name = DEFAULT_NAME, tracks = emptyList())
+
+        /** The synthetic Downloads playlist holding [tracks], one row per downloaded song. */
+        fun downloads(tracks: List<Track>): Playlist =
+            Playlist(id = DOWNLOADS_ID, name = DOWNLOADS_NAME, tracks = tracks)
 
         /** A new user playlist with a random id and no tracks. */
         fun create(name: String): Playlist =

@@ -44,8 +44,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.random.Random
@@ -154,8 +157,10 @@ data class DownloadProgress(val fraction: Float?, val failed: Boolean = false)
  *
  * Playlists: [playlists] is the stored list in creation order, with
  * the default playlist always present (bootstrapped on first launch
- * through [PlaylistStore]). Creating, deleting, adding to, and
- * removing from playlists update the flow synchronously and persist
+ * through [PlaylistStore]), plus the synthetic Downloads playlist
+ * right after the default, derived from the download records and
+ * never persisted. Creating, deleting, adding to, and removing from
+ * playlists update the stored flow synchronously and persist
  * asynchronously; a failed persist is logged and swallowed, never
  * allowed to lose the in-memory state. Playlist mutations assume the
  * initial load has completed; in practice it finishes before any
@@ -247,9 +252,36 @@ class SearchViewModel(
     private val _volume = MutableStateFlow(1f)
     val volume: StateFlow<Float> = _volume.asStateFlow()
 
-    /** The playlists in creation order, default first. Empty only until the initial load lands. */
+    /** The stored playlists in creation order, default first. Empty only until the initial load lands. Never holds the synthetic Downloads playlist: that one is derived in [playlists] and must never be persisted. */
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
-    val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
+
+    /**
+     * The playlists the UI shows: the stored lists, with the
+     * synthetic Downloads playlist inserted right after the
+     * default, before the user playlists. The Downloads playlist
+     * is derived from the download records (one row per song, in
+     * download order), so it appears even when empty and updates
+     * as songs download or are deleted. Empty only until the
+     * initial playlist load lands, like the stored flow.
+     */
+    val playlists: StateFlow<List<Playlist>> = combine(
+        _playlists,
+        _downloadRecords,
+    ) { stored, records ->
+        if (stored.isEmpty()) {
+            emptyList()
+        } else {
+            val downloads = Playlist.downloads(
+                records.map { it.track }.distinctBy { it.key },
+            )
+            val defaultIndex = stored.indexOfFirst { it.isDefault }
+            if (defaultIndex < 0) {
+                listOf(downloads) + stored
+            } else {
+                stored.take(defaultIndex + 1) + downloads + stored.drop(defaultIndex + 1)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Total cached bytes (audio + covers), null until first measured. */
     private val _cacheSizeBytes = MutableStateFlow<Long?>(null)
@@ -756,24 +788,6 @@ class SearchViewModel(
     }
 
     /**
-     * Play [track] from the downloads screen: the downloads list
-     * (one entry per song, in download order) becomes the queue.
-     * Playback prefers the downloaded file, through the same
-     * local check as every other play path. Tapping the track
-     * that is already loaded is a no-op, same as [play].
-     */
-    fun playFromDownloads(track: Track) {
-        logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid} downloads")
-        if (isCurrentTrack(track)) {
-            logger.i(TAG, "play ignored: already current bvid=${track.id} cid=${track.cid}")
-            return
-        }
-        updateQueue(_downloadRecords.value.map { it.track }.distinctBy { it.key })
-        shuffleHistory.clear()
-        playAt(track, startPositionMs = 0L, resumePlaying = true)
-    }
-
-    /**
      * Play [track] without touching the queue: previous/next,
      * auto-advance, and playback retry keep moving inside the queue
      * the current track came from. [startPositionMs] resumes into
@@ -1208,11 +1222,16 @@ class SearchViewModel(
 
     /**
      * Deletes the playlist with [playlistId]. The default playlist
-     * cannot be deleted; an unknown id is a no-op. The in-flight
-     * queue is a snapshot, so deleting a playlist never disturbs
-     * playback already in progress.
+     * and the synthetic Downloads playlist cannot be deleted; an
+     * unknown id is a no-op. The in-flight queue is a snapshot, so
+     * deleting a playlist never disturbs playback already in
+     * progress.
      */
     fun deletePlaylist(playlistId: String) {
+        if (playlistId == Playlist.DOWNLOADS_ID) {
+            logger.w(TAG, "playlist delete rejected: downloads playlist cannot be deleted")
+            return
+        }
         val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
         if (target.isDefault) {
             logger.w(TAG, "playlist delete rejected: default playlist cannot be deleted")
@@ -1238,9 +1257,15 @@ class SearchViewModel(
      * Adds [track] to one playlist (stored without its play URL).
      * Returns true when the track was actually added, false when it
      * was already present or the playlist does not exist, so the UI
-     * can report which one happened.
+     * can report which one happened. The Downloads playlist is
+     * never a target: it auto-fills on download, so an add there
+     * is a no-op returning false.
      */
     fun addTrackToPlaylist(playlistId: String, track: Track): Boolean {
+        if (playlistId == Playlist.DOWNLOADS_ID) {
+            logger.w(TAG, "playlist add rejected: downloads playlist fills from downloads")
+            return false
+        }
         val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return false
         val stored = track.copy(playUrl = "")
         if (target.tracks.any { it.isSameSongAs(stored) }) {
@@ -1278,10 +1303,16 @@ class SearchViewModel(
      * playlist, in a single update and a single persist: the
      * detail screen's checkbox selection deletes through here.
      * An empty set, an unknown playlist, or keys that match
-     * nothing are all no-ops; other playlists are untouched.
+     * nothing are all no-ops; other playlists are untouched. The
+     * Downloads playlist is ignored here: deleting from it goes
+     * through [deleteDownload], which removes the file as well.
      */
     fun removeTracksFromPlaylist(playlistId: String, trackKeys: Set<String>) {
         if (trackKeys.isEmpty()) return
+        if (playlistId == Playlist.DOWNLOADS_ID) {
+            logger.w(TAG, "playlist remove rejected: downloads delete through deleteDownload")
+            return
+        }
         val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
         val removed = target.tracks.count { it.key in trackKeys }
         if (removed == 0) return

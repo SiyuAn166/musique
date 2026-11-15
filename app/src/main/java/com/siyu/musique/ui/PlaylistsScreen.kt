@@ -58,16 +58,10 @@ internal fun songCountLabel(count: Int): String =
 fun PlaylistsScreen(
     viewModel: SearchViewModel,
     onOpenDetail: (String) -> Unit,
-    onOpenPlayer: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
-    val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
-    val playerState by viewModel.playerState.collectAsStateWithLifecycle()
-    val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
-    val resolvedQualityLabel by viewModel.resolvedQualityLabel.collectAsStateWithLifecycle()
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
@@ -115,19 +109,6 @@ fun PlaylistsScreen(
                 )
             }
         }
-
-        MiniPlayerBar(
-            track = currentTrack,
-            isPlaying = isPlaying,
-            playerState = playerState,
-            progress = progress,
-            onTogglePlayPause = { viewModel.togglePlayPause() },
-            onRetry = { viewModel.retryPlayback() },
-            onOpenPlayer = onOpenPlayer,
-            onPrevious = { viewModel.playPrevious() },
-            onNext = { viewModel.playNext() },
-            qualityLabel = resolvedQualityLabel,
-        )
     }
 
     if (showCreateDialog) {
