@@ -38,7 +38,7 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Slim floating mini player bar: a translucent white card with
+ * Slim floating mini player bar: a white card with
  * large rounded corners, a small square cover, title/artist,
  * previous/play-pause/next icon buttons, and a thin progress
  * hairline along the bottom edge driven by [progress]. A resolved quality label ("192K", "Hi-Res") shows as
@@ -91,7 +91,7 @@ fun MiniPlayerBar(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White.copy(alpha = 0.9f),
+            containerColor = Color.White,
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 6.dp,
