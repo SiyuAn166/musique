@@ -33,21 +33,24 @@ import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
 
 /**
- * Search screen (Step 1): search box, real Bilibili result list with
- * covers, mini player bar. Tapping a row fills in the track's cid
- * and marks it as playing (placeholder playback, no sound yet) and
- * shows the mini player. Errors show a distinct message per failure
- * kind, with a Retry button.
+ * Search screen (Step 3): search box, real Bilibili result list with
+ * covers, mini player bar, and a log button. Tapping a row plays it
+ * through ExoPlayer (cid fill + fresh play URL first). Search errors
+ * show a distinct message per failure kind, with a Retry button;
+ * player errors show their own message with a Retry button above the
+ * mini player bar.
  */
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
     onOpenPlayer: () -> Unit,
+    onOpenLog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -67,6 +70,10 @@ fun SearchScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Button(onClick = { viewModel.search(query) }) {
                 Text("Search")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(onClick = onOpenLog) {
+                Text("日志")
             }
         }
 
@@ -122,14 +129,40 @@ fun SearchScreen(
             }
         }
 
-        // Mini player bar placeholder (Step 0): shows the current track
-        // and a play/pause toggle. Real progress and audio come later.
+        // Player error row (Step 3): a failed cid fill, URL resolve,
+        // or playback shows its message here with a Retry button.
+        val errorState = playerState as? PlayerUiState.Error
+        if (errorState != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = errorState.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = { viewModel.retryPlayback() }) {
+                    Text("Retry")
+                }
+            }
+        }
+
+        // Mini player bar (Step 3): shows the current track, the real
+        // player state, and a play/pause toggle wired to ExoPlayer.
+        // Real progress and seek come in Step 4.
         val track = currentTrack
         if (track != null) {
             MiniPlayerBar(
                 track = track,
                 isPlaying = isPlaying,
+                playerState = playerState,
                 onTogglePlayPause = { viewModel.togglePlayPause() },
+                onRetry = { viewModel.retryPlayback() },
                 onOpenPlayer = onOpenPlayer,
             )
         }

@@ -6,6 +6,7 @@ import com.siyu.musique.core.network.BiliParseException
 import com.siyu.musique.data.FakeSearchRepository
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.model.Track
+import com.siyu.musique.ui.PlayerUiState
 import com.siyu.musique.ui.SearchErrorKind
 import com.siyu.musique.ui.SearchUiState
 import com.siyu.musique.ui.SearchViewModel
@@ -19,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -191,28 +193,38 @@ class SearchViewModelStep1Test {
         viewModel.play(track)
         advanceUntilIdle()
         assertEquals(0, repository.detailCalls)
-        assertEquals(track, viewModel.currentTrack.value)
+        // Step 3 fills playUrl on the current track when the URL
+        // resolves; everything else about the track is unchanged.
+        assertEquals(track, viewModel.currentTrack.value?.copy(playUrl = ""))
     }
 
     @Test
-    fun `play keeps the tapped track when the detail call fails`() = runTest(testDispatcher) {
-        val repository = object : SearchRepository by FakeSearchRepository() {
-            override suspend fun fetchDetail(track: Track): Track {
-                throw BiliNetworkException("no network")
+    fun `play surfaces a player error when the detail call fails (Step 3 contract change)`() =
+        runTest(testDispatcher) {
+            // Step 1 kept the tapped track and pretended to play: the
+            // detail failure was best-effort and silent. Step 3
+            // corrects that: playback needs the cid, so a detail
+            // failure is a player error with a visible message and
+            // Retry, and nothing pretends to play.
+            val repository = object : SearchRepository by FakeSearchRepository() {
+                override suspend fun fetchDetail(track: Track): Track {
+                    throw BiliNetworkException("no network")
+                }
             }
+            val viewModel = SearchViewModel(repository)
+            val track = Track(
+                id = "BV1q4FTeBEMj",
+                cid = "",
+                title = "t",
+                artist = "a",
+                cover = "",
+                duration = 228.seconds,
+            )
+            viewModel.play(track)
+            advanceUntilIdle()
+            assertEquals(track, viewModel.currentTrack.value)
+            assertFalse(viewModel.isPlaying.value)
+            val error = viewModel.playerState.value as PlayerUiState.Error
+            assertTrue(error.message.contains("Network problem"))
         }
-        val viewModel = SearchViewModel(repository)
-        val track = Track(
-            id = "BV1q4FTeBEMj",
-            cid = "",
-            title = "t",
-            artist = "a",
-            cover = "",
-            duration = 228.seconds,
-        )
-        viewModel.play(track)
-        advanceUntilIdle()
-        assertEquals(track, viewModel.currentTrack.value)
-        assertTrue(viewModel.isPlaying.value)
-    }
 }

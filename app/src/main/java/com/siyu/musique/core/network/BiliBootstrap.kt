@@ -1,5 +1,7 @@
 package com.siyu.musique.core.network
 
+import com.siyu.musique.core.logging.MusiqueLog
+import com.siyu.musique.core.logging.MusiqueLogger
 import java.util.UUID
 import kotlin.random.Random
 import kotlinx.coroutines.sync.Mutex
@@ -30,6 +32,7 @@ class BiliBootstrap(
     private val generateIdentity: () -> DeviceIdentity = ::generateDeviceIdentity,
     private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000L },
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
+    private val logger: MusiqueLogger = MusiqueLog.shared,
 ) {
     data class DeviceIdentity(val uuid: String, val bLsid: String, val bNut: String)
 
@@ -43,12 +46,21 @@ class BiliBootstrap(
 
     suspend fun ensureBootstrap(): Boolean = mutex.withLock {
         if (completed) return true
+        logger.i(TAG, "bootstrap start")
         try {
             runSteps()
             completed = true
             lastError = null
+            logger.i(TAG, "bootstrap ok")
             true
         } catch (e: Exception) {
+            // Log the failure kind only: never the response preview,
+            // which can carry the ticket JWT.
+            val detail = when (e) {
+                is BiliApiException -> "api code ${e.code}"
+                else -> e::class.simpleName ?: "unknown"
+            }
+            logger.e(TAG, "bootstrap failed: $detail")
             lastError = e
             false
         }
@@ -78,6 +90,9 @@ class BiliBootstrap(
             state = state.copy(buvid3 = buvid3, buvid4 = buvid4)
             store.save(state)
             seedCookies(state)
+            logger.i(TAG, "bootstrap finger/spi ok")
+        } else {
+            logger.d(TAG, "bootstrap using stored buvid pair")
         }
 
         val ticketExpired = state.biliTicket.isEmpty() ||
@@ -115,6 +130,9 @@ class BiliBootstrap(
             state = updated
             store.save(state)
             seedCookies(state)
+            logger.i(TAG, "bootstrap ticket renewed")
+        } else {
+            logger.d(TAG, "bootstrap using stored ticket")
         }
 
         // Activation hit: body discarded, failure ignored.
@@ -144,6 +162,7 @@ class BiliBootstrap(
     }
 
     companion object {
+        const val TAG = "Bootstrap"
         const val FINGER_SPI_URL = "https://api.bilibili.com/x/frontend/finger/spi"
         const val TICKET_URL =
             "https://api.bilibili.com/bapis/bilibili.api.ticket.v1.Ticket/GenWebTicket"

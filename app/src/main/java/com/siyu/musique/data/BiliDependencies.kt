@@ -6,15 +6,23 @@ import com.siyu.musique.core.network.BiliBootstrap
 import com.siyu.musique.core.network.BiliClient
 import com.siyu.musique.core.network.CookieJar
 import com.siyu.musique.core.network.WbiKeyStore
+import com.siyu.musique.player.ExoPlayerEngine
+import com.siyu.musique.player.PlayerEngine
 
 /**
- * Manual wiring for the Bilibili stack. No DI framework in v0.1.
+ * Manual wiring for the Bilibili stack and the player. No DI
+ * framework in v0.1.
  * The WBI key fetcher is assigned after [ApiService] exists, which
  * breaks the client <-> service construction cycle: the fetcher uses
  * an unsigned nav request, so it never re-enters the key store.
- * Statically reviewed only: it needs an Android Context for DataStore.
+ * Statically reviewed only: it needs an Android Context for DataStore
+ * and for the ExoPlayer cache.
  */
 object BiliDependencies {
+
+    /** The ExoPlayer engine. Build once, on the main thread, and keep it for the Activity's life. */
+    fun createPlayerEngine(context: Context): PlayerEngine =
+        ExoPlayerEngine(context.applicationContext)
 
     fun createSearchRepository(context: Context): SearchRepository {
         val appContext = context.applicationContext
