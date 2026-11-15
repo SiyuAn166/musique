@@ -183,6 +183,13 @@ fun PlayerScreen(
 
     Column(
         modifier = modifier
+            // The offset comes first: it places the whole page,
+            // background included, lower in the layout, so the
+            // area it vacates is genuinely empty and the tab
+            // content underneath shows through. An offset after
+            // the background would move only the content and
+            // leave the white background covering the screen.
+            .offset { IntOffset(0, dismissOffset.value.roundToInt()) }
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -221,11 +228,6 @@ fun PlayerScreen(
                     },
                 )
             }
-            // A layout offset, not a graphics-layer translation:
-            // the page is placed lower in the layout, so the
-            // area it vacates is genuinely empty and the tab
-            // content underneath shows through.
-            .offset { IntOffset(0, dismissOffset.value.roundToInt()) }
             .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
