@@ -9,6 +9,18 @@ package com.siyu.musique.player
 data class PlaybackError(val message: String, val isHttpFailure: Boolean)
 
 /**
+ * The song info the engine attaches to the media item, so the
+ * notification and lock screen show the title, artist, and cover.
+ * Pure data: the engine translates it into Media3 metadata.
+ * [artworkUrl] may be blank, in which case no artwork is attached.
+ */
+data class PlayerMediaMetadata(
+    val title: String,
+    val artist: String,
+    val artworkUrl: String,
+)
+
+/**
  * The player seam: the ViewModel drives playback through this
  * interface only, so unit tests use a fake and the production
  * implementation ([ExoPlayerEngine]) stays in the Android layer.
@@ -43,9 +55,11 @@ interface PlayerEngine {
      * Stream [url] (progressive playback, never download-then-play).
      * [cacheKey] identifies the cached audio (bvid + cid + quality
      * id); the URL itself is never the cache key because URLs expire.
+     * [metadata] is attached to the media item for the notification
+     * and lock screen; null leaves the item without song info.
      * Replaces whatever was playing.
      */
-    fun play(url: String, cacheKey: String)
+    fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata? = null)
 
     /** Pause, keeping the current item loaded. */
     fun pause()
@@ -84,7 +98,12 @@ interface PlayerEngine {
      */
     fun setVolume(volume: Float)
 
-    /** Release all player resources. The engine must not be used after this. */
+    /**
+     * Release the engine's hold on the player. Engines backed by a
+     * shared player only detach their listener here; the player
+     * itself is released by its owner. The engine must not be used
+     * after this.
+     */
     fun release()
 
     companion object {
@@ -100,7 +119,7 @@ interface PlayerEngine {
  */
 object NoOpPlayerEngine : PlayerEngine {
     override fun setListener(listener: PlayerEngine.Listener?) = Unit
-    override fun play(url: String, cacheKey: String) = Unit
+    override fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata?) = Unit
     override fun pause() = Unit
     override fun resume() = Unit
     override fun stop() = Unit

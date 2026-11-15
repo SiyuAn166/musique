@@ -1,98 +1,117 @@
 package com.siyu.musique.player
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.cache.CacheDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
-import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.siyu.musique.core.logging.MusiqueLog
-import com.siyu.musique.core.network.BiliClient
-import java.io.File
 
 /**
- * [PlayerEngine] backed by Media3 ExoPlayer, streaming: the audio
- * plays from the CDN progressively, never downloaded whole first
- * (the reference Flutter app downloads the full DASH file before
- * playing; this is the deliberate design change).
+ * [PlayerEngine] backed by the shared Media3 ExoPlayer from
+ * [PlayerHolder], streaming: the audio plays from the CDN
+ * progressively, never downloaded whole first (the reference
+ * Flutter app downloads the full DASH file before playing; this
+ * is the deliberate design change).
  *
- * The CDN needs the desktop Firefox User-Agent and a bilibili.com
- * Referer or it answers 403, so both are set as default request
- * headers. Audio bytes are cached through [CacheDataSource] (200MB
- * LRU) under the caller-supplied cache key (bvid + cid + quality);
- * play URLs are never cache keys and never stored.
+ * The player is shared with the background playback service, so
+ * the notification controls the same playback as the UI. [play]
+ * makes sure the service is running, so playback survives
+ * leaving the app. [release] only detaches this engine's
+ * listener; the player itself lives until the service is
+ * destroyed. Song info travels on the media item as Media3
+ * metadata, so the notification and lock screen show the title,
+ * artist, and cover.
  *
- * Statically reviewed only: it needs an Android Context and Media3,
- * so it cannot compile under kotlinc here. Construct and call it on
- * the main thread.
+ * Statically reviewed only: it needs an Android Context and
+ * Media3, so it cannot compile under kotlinc here. Construct
+ * and call it on the main thread.
  */
 class ExoPlayerEngine(
     context: Context,
-    private val cache: SimpleCache = newCache(context),
+    private val player: ExoPlayer,
+    private val cache: SimpleCache,
 ) : PlayerEngine {
+
+    private val appContext: Context = context.applicationContext
 
     private var listener: PlayerEngine.Listener? = null
 
-    private val mediaSourceFactory: ProgressiveMediaSource.Factory =
-        ProgressiveMediaSource.Factory(
-            CacheDataSource.Factory()
-                .setCache(cache)
-                .setUpstreamDataSourceFactory(
-                    DefaultHttpDataSource.Factory()
-                        .setDefaultRequestProperties(REQUEST_HEADERS),
-                )
-                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR),
-        )
-
-    private val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
-        addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                when (playbackState) {
-                    Player.STATE_BUFFERING -> listener?.onBuffering()
-                    Player.STATE_READY -> if (playWhenReady) {
-                        listener?.onPlaying()
-                    } else {
-                        listener?.onPaused()
-                    }
-                    Player.STATE_ENDED -> listener?.onEnded()
-                    else -> Unit
+    private val playerListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            when (playbackState) {
+                Player.STATE_BUFFERING -> listener?.onBuffering()
+                Player.STATE_READY -> if (playWhenReady) {
+                    listener?.onPlaying()
+                } else {
+                    listener?.onPaused()
                 }
+                Player.STATE_ENDED -> listener?.onEnded()
+                else -> Unit
             }
+        }
 
-            override fun onPlayerError(error: PlaybackException) {
-                listener?.onError(
-                    PlaybackError(
-                        message = error.message ?: "Playback error ${error.errorCode}",
-                        isHttpFailure = error.errorCode in HTTP_ERROR_CODES,
-                    ),
-                )
-            }
-        })
+        override fun onPlayerError(error: PlaybackException) {
+            listener?.onError(
+                PlaybackError(
+                    message = error.message ?: "Playback error ${error.errorCode}",
+                    isHttpFailure = error.errorCode in HTTP_ERROR_CODES,
+                ),
+            )
+        }
+    }
+
+    init {
+        player.addListener(playerListener)
     }
 
     override fun setListener(listener: PlayerEngine.Listener?) {
         this.listener = listener
     }
 
-    override fun play(url: String, cacheKey: String) {
+    override fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata?) {
         // Diagnostic for the audio cache: how many bytes of this
         // key are already stored before the stream starts. The key
         // holds bvid + cid + quality only, never the URL.
         val cachedBytes = cache.getCachedLength(cacheKey, 0L, Long.MAX_VALUE)
         MusiqueLog.i(TAG, "audio cache $cachedBytes bytes stored key=$cacheKey")
+        val metadataBuilder = MediaMetadata.Builder()
+        metadata?.let {
+            metadataBuilder.setTitle(it.title)
+            metadataBuilder.setArtist(it.artist)
+            if (it.artworkUrl.isNotBlank()) {
+                metadataBuilder.setArtworkUri(Uri.parse(it.artworkUrl))
+            }
+        }
         val item = MediaItem.Builder()
             .setUri(url)
             .setCustomCacheKey(cacheKey)
+            .setMediaMetadata(metadataBuilder.build())
             .build()
-        player.setMediaSource(mediaSourceFactory.createMediaSource(item))
+        player.setMediaItem(item)
         player.prepare()
         player.playWhenReady = true
+        ensureServiceRunning()
+    }
+
+    /**
+     * Starts the background playback service (a no-op when it is
+     * already running). A failure only costs the notification and
+     * background survival; playback itself is unaffected.
+     */
+    private fun ensureServiceRunning() {
+        try {
+            appContext.startForegroundService(
+                Intent(appContext, PlaybackService::class.java),
+            )
+        } catch (e: Exception) {
+            MusiqueLog.w(TAG, "playback service start failed (${e::class.simpleName})")
+        }
     }
 
     override fun pause() {
@@ -124,33 +143,14 @@ class ExoPlayerEngine(
     }
 
     override fun release() {
-        player.release()
-        cache.release()
+        // Detach only: the player is shared with the playback
+        // service, which releases it when the service is destroyed.
+        player.removeListener(playerListener)
+        listener = null
     }
 
     companion object {
         private const val TAG = "Player"
-
-        /** Build the shared audio cache. The wiring builds it once and hands the same instance to the engine and to the cache settings, so the reported size is what playback stored. */
-        fun newCache(context: Context): SimpleCache = SimpleCache(
-            File(context.cacheDir, CACHE_DIR),
-            LeastRecentlyUsedCacheEvictor(CACHE_SIZE_BYTES),
-            StandaloneDatabaseProvider(context),
-        )
-
-        const val CACHE_DIR = "exo_audio_cache"
-
-        /** 200MB, least recently used eviction, per the v0.1 design. */
-        const val CACHE_SIZE_BYTES: Long = 200L * 1024L * 1024L
-
-        /**
-         * The CDN answers 403 without these. Same desktop Firefox
-         * User-Agent as the API client, same bilibili.com Referer.
-         */
-        val REQUEST_HEADERS: Map<String, String> = mapOf(
-            "User-Agent" to BiliClient.USER_AGENT,
-            "Referer" to "https://www.bilibili.com/",
-        )
 
         /** Media3 IO error codes: network/HTTP failures worth one fresh-URL retry. */
         val HTTP_ERROR_CODES: Set<Int> = setOf(

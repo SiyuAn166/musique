@@ -82,6 +82,11 @@ dependencies {
     // 1.12.0-beta01 is a pre-release and is skipped.
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-datasource:1.11.1")
+    // Background playback: MediaSessionService + notification.
+    // Same 1.11.1 train; the AAR was downloaded and its API
+    // (MediaSessionService, MediaSession.Callback, connection
+    // result, notification provider) verified Nov 15, 2026.
+    implementation("androidx.media3:media3-session:1.11.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

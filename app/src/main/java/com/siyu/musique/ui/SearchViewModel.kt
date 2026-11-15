@@ -25,8 +25,11 @@ import com.siyu.musique.model.Playlist
 import com.siyu.musique.model.RepeatMode
 import com.siyu.musique.model.Track
 import com.siyu.musique.player.NoOpPlayerEngine
+import com.siyu.musique.player.PlaybackControls
+import com.siyu.musique.player.PlaybackControlsRegistry
 import com.siyu.musique.player.PlaybackError
 import com.siyu.musique.player.PlayerEngine
+import com.siyu.musique.player.PlayerMediaMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -154,7 +157,7 @@ class SearchViewModel(
     private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     private val appCache: AppCache = InMemoryAppCache(),
     private val random: Random = Random.Default,
-) : ViewModel() {
+) : ViewModel(), PlaybackControls {
 
     private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val searchState: StateFlow<SearchUiState> = _searchState.asStateFlow()
@@ -237,6 +240,9 @@ class SearchViewModel(
     private var engineHasMedia: Boolean = false
 
     init {
+        // The background service's media session routes
+        // notification, lock screen, and headset commands here.
+        PlaybackControlsRegistry.handler = this
         viewModelScope.launch {
             runCatching { qualityPreferenceStore.load() }
                 .onSuccess { stored -> stored?.let { _qualityPreference.value = it } }
@@ -566,6 +572,7 @@ class SearchViewModel(
                 playerEngine.play(
                     stream.baseUrl,
                     cacheKey(current, stream.qualityId),
+                    PlayerMediaMetadata(current.title, current.artist, current.cover),
                 )
                 logger.i(TAG, "player play intent=$intent quality=${stream.qualityId}")
                 if (startPositionMs > 0) {
@@ -654,29 +661,8 @@ class SearchViewModel(
 
     fun togglePlayPause() {
         when (_playerState.value) {
-            PlayerUiState.Playing, PlayerUiState.Buffering -> {
-                playerEngine.pause()
-                stopProgressPolling()
-                publishProgress()
-                _playerState.value = PlayerUiState.Paused
-                _isPlaying.value = false
-                logger.d(TAG, "player pause requested")
-            }
-            PlayerUiState.Paused -> {
-                if (engineHasMedia) {
-                    playerEngine.resume()
-                    _playerState.value = PlayerUiState.Buffering
-                    _isPlaying.value = true
-                    logger.d(TAG, "player resume requested")
-                } else {
-                    // Paused before the engine ever got media (e.g.
-                    // paused while fetching): replay the track.
-                    // Through playKeepingQueue, not play: the tap
-                    // guard in play would treat this as a re-tap
-                    // of the current track and do nothing.
-                    _currentTrack.value?.let { playKeepingQueue(it) }
-                }
-            }
+            PlayerUiState.Playing, PlayerUiState.Buffering -> pausePlayback()
+            PlayerUiState.Paused -> resumePlayback()
             PlayerUiState.Fetching -> {
                 // Stop the in-flight resolve; resume replays the track.
                 playJob?.cancel()
@@ -690,6 +676,48 @@ class SearchViewModel(
             else -> Unit // Idle and Error: nothing to toggle; Error uses Retry.
         }
     }
+
+    /** Pause playback. A no-op unless something is playing or buffering. */
+    fun pausePlayback() {
+        if (_playerState.value != PlayerUiState.Playing &&
+            _playerState.value != PlayerUiState.Buffering
+        ) {
+            return
+        }
+        playerEngine.pause()
+        stopProgressPolling()
+        publishProgress()
+        _playerState.value = PlayerUiState.Paused
+        _isPlaying.value = false
+        logger.d(TAG, "player pause requested")
+    }
+
+    /** Resume playback. A no-op unless paused. With no media loaded yet (paused while fetching), the track is replayed instead. */
+    fun resumePlayback() {
+        if (_playerState.value != PlayerUiState.Paused) return
+        if (engineHasMedia) {
+            playerEngine.resume()
+            _playerState.value = PlayerUiState.Buffering
+            _isPlaying.value = true
+            logger.d(TAG, "player resume requested")
+        } else {
+            // Paused before the engine ever got media (e.g.
+            // paused while fetching): replay the track.
+            // Through playKeepingQueue, not play: the tap
+            // guard in play would treat this as a re-tap
+            // of the current track and do nothing.
+            _currentTrack.value?.let { playKeepingQueue(it) }
+        }
+    }
+
+    /** Notification, lock screen, and headset play/pause: the same toggle as the play/pause button. */
+    override fun onToggleRequested() = togglePlayPause()
+
+    /** Notification, lock screen, and headset next: the same skip as the next button. */
+    override fun onNextRequested() = playNext()
+
+    /** Notification, lock screen, and headset previous: the same skip as the previous button. */
+    override fun onPreviousRequested() = playPrevious()
 
     fun playNext() {
         pickNextTrack()?.let { playKeepingQueue(it) }
@@ -890,8 +918,14 @@ class SearchViewModel(
     override fun onCleared() {
         playJob?.cancel()
         progressJob?.cancel()
+        if (PlaybackControlsRegistry.handler === this) {
+            PlaybackControlsRegistry.handler = null
+        }
         playerEngine.setListener(null)
-        playerEngine.stop()
+        // No stop() here on purpose: the player is shared with
+        // the background service, and clearing the ViewModel
+        // (leaving the app) must not kill background playback.
+        // The service stops the player when it is destroyed.
         playerEngine.release()
         super.onCleared()
     }
@@ -914,6 +948,7 @@ class SearchViewModel(
                 playerEngine.play(
                     stream.baseUrl,
                     cacheKey(track, stream.qualityId),
+                    PlayerMediaMetadata(track.title, track.artist, track.cover),
                 )
             } catch (e: CancellationException) {
                 throw e

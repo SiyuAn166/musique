@@ -9,6 +9,7 @@ import com.siyu.musique.core.network.CookieJar
 import com.siyu.musique.core.network.WbiKeyStore
 import com.siyu.musique.player.ExoPlayerEngine
 import com.siyu.musique.player.PlayerEngine
+import com.siyu.musique.player.PlayerHolder
 
 /**
  * Manual wiring for the Bilibili stack and the player. No DI
@@ -21,13 +22,23 @@ import com.siyu.musique.player.PlayerEngine
  */
 object BiliDependencies {
 
-    /** The shared audio cache. Build once and hand the same instance to the engine and to the app cache, so the settings size is what playback stored. */
+    /** The shared audio cache, from the holder that also owns the player. Hand the same instance to the engine and to the app cache, so the settings size is what playback stored. */
     fun createAudioCache(context: Context): SimpleCache =
-        ExoPlayerEngine.newCache(context.applicationContext)
+        PlayerHolder.audioCache(context.applicationContext)
 
-    /** The ExoPlayer engine. Build once, on the main thread, and keep it for the Activity's life. */
+    /**
+     * The ExoPlayer engine, around the holder's shared player.
+     * Build once, on the main thread, and keep it for the
+     * Activity's life. [audioCache] must be the holder's
+     * instance (see [createAudioCache]), so the engine's cache
+     * diagnostic reads the cache the player writes.
+     */
     fun createPlayerEngine(context: Context, audioCache: SimpleCache): PlayerEngine =
-        ExoPlayerEngine(context.applicationContext, audioCache)
+        ExoPlayerEngine(
+            context.applicationContext,
+            PlayerHolder.player(context.applicationContext),
+            audioCache,
+        )
 
     /** The app caches (audio + covers), for the settings screen's size and clear button. */
     fun createAppCache(context: Context, audioCache: SimpleCache): AppCache =

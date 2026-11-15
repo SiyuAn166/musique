@@ -11,6 +11,10 @@ class FakePlayerEngine : PlayerEngine {
 
     /** (url, cacheKey) pairs passed to [play], in order. */
     val playCalls = mutableListOf<Pair<String, String>>()
+
+    /** The song metadata from the latest [play] call, or null when none was passed. */
+    var lastMetadata: PlayerMediaMetadata? = null
+        private set
     var pauseCalls: Int = 0
         private set
     var resumeCalls: Int = 0
@@ -47,8 +51,9 @@ class FakePlayerEngine : PlayerEngine {
         this.listener = listener
     }
 
-    override fun play(url: String, cacheKey: String) {
+    override fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata?) {
         playCalls.add(url to cacheKey)
+        lastMetadata = metadata
         positionMs = 0L
     }
 
