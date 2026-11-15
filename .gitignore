@@ -1,0 +1,16 @@
+# Musique — Android .gitignore (Step 0)
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+*.hprof
+app/build/
+app/release/
+*.apk
+*.aab
