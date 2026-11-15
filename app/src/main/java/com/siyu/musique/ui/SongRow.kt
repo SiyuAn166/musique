@@ -1,7 +1,7 @@
 package com.siyu.musique.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -70,6 +70,8 @@ internal const val PART_ROW_DIVIDER_START_DP: Int =
  * While [loading] is true the cover dims under a small white
  * spinner, so a parts lookup in flight reads as loading instead
  * of a frozen row; compact rows have no cover to dim.
+ * [onLongClick] is null for rows with no long-press action; rows
+ * that support it (playlist entries) enter selection mode.
  */
 @Composable
 fun SongRow(
@@ -80,11 +82,12 @@ fun SongRow(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     loading: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(
                 horizontal = SONG_ROW_HORIZONTAL_PADDING_DP.dp,
                 vertical = if (compact) {

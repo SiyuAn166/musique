@@ -40,14 +40,19 @@ import com.siyu.musique.ui.theme.MusiqueIcons
  * plays that part.
  * The multi-select button at the top turns on selection mode:
  * checkboxes appear on the rows, tapping a row toggles its
- * checkbox instead of playing, and while any song is selected a
- * trash icon at the top removes all selected songs at once.
- * Tapping the button again leaves selection mode and clears the
- * selection. User-created playlists get a trash icon to delete
- * the whole playlist; the default playlist and the Downloads
- * playlist cannot be deleted. Removing songs from the Downloads
- * playlist deletes the downloaded files as well. An empty
- * playlist shows a short empty message. The shared mini player
+ * checkbox instead of playing, and a trash icon at the top is
+ * visible for the whole mode, greyed until at least one song is
+ * checked, then black to remove all selected songs at once.
+ * Long-pressing a row enters selection mode with that row
+ * checked, so the trash icon is usable right away. Tapping the
+ * button again leaves selection mode and clears the selection.
+ * User-created playlists get a trash icon to delete the whole
+ * playlist, hidden while selection mode is on so the two trash
+ * icons never sit side by side; the default playlist and the
+ * Downloads playlist cannot be deleted. Removing songs from the
+ * Downloads playlist deletes the downloaded files as well. An
+ * empty playlist shows a short empty message, except Downloads,
+ * which shows nothing when empty. The shared mini player
  * bar sits below this screen, owned by the app shell.
  */
 @Composable
@@ -138,7 +143,7 @@ fun PlaylistDetailScreen(
                     )
                 }
             }
-            if (playlist != null && !playlist.isDefault && !playlist.isDownloads) {
+            if (!selecting && playlist != null && !playlist.isDefault && !playlist.isDownloads) {
                 IconButton(
                     onClick = {
                         viewModel.deletePlaylist(playlist.id)
@@ -152,8 +157,9 @@ fun PlaylistDetailScreen(
                     )
                 }
             }
-            if (playlist != null && selectedKeys.isNotEmpty()) {
+            if (playlist != null && selecting) {
                 IconButton(
+                    enabled = selectedKeys.isNotEmpty(),
                     onClick = {
                         if (playlist.isDownloads) {
                             // Deleting a download removes every
@@ -171,7 +177,11 @@ fun PlaylistDetailScreen(
                     Icon(
                         imageVector = MusiqueIcons.Delete,
                         contentDescription = "Remove selected songs",
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = if (selectedKeys.isNotEmpty()) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
             }
@@ -190,7 +200,7 @@ fun PlaylistDetailScreen(
                 )
             }
         } else {
-            if (playlist.tracks.isEmpty()) {
+            if (playlist.tracks.isEmpty() && !playlist.isDownloads) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -198,15 +208,11 @@ fun PlaylistDetailScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (playlist.isDownloads) {
-                            "No downloads yet. Download songs from the player page."
-                        } else {
-                            "No songs yet. Add songs from search."
-                        },
+                        text = "No songs yet. Add songs from search.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            } else {
+            } else if (playlist.tracks.isNotEmpty()) {
                 // Flattened rows: each entry, plus its parts right
                 // under it when expanded and known to have more
                 // than one. Selection mode shows entries only:
@@ -242,6 +248,17 @@ fun PlaylistDetailScreen(
                                     // A parts lookup in flight dims the cover
                                     // under a spinner instead of a frozen row.
                                     loading = track.id in partsLoadingIds,
+                                    // Long-pressing enters selection mode
+                                    // with this row checked, so the trash
+                                    // icon is usable right away.
+                                    onLongClick = {
+                                        selecting = true
+                                        selectedKeys = if (track.key in selectedKeys) {
+                                            selectedKeys - track.key
+                                        } else {
+                                            selectedKeys + track.key
+                                        }
+                                    },
                                     onClick = {
                                         if (selecting) {
                                             selectedKeys = if (track.key in selectedKeys) {
