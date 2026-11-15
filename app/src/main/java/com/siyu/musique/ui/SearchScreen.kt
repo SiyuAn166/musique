@@ -5,24 +5,30 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -31,6 +37,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
+import kotlinx.coroutines.flow.distinctUntilChanged
+
+/** Load the next page when the last visible row is this close to the end of the list. */
+private const val LOAD_MORE_THRESHOLD = 3
 
 /**
  * Search screen (Step 3): search box, real Bilibili result list with
@@ -53,7 +63,11 @@ fun SearchScreen(
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -117,13 +131,49 @@ fun SearchScreen(
                 }
             }
             is SearchUiState.Success -> {
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                val listState = rememberLazyListState()
+                // Load the next page when the user scrolls near the
+                // end. distinctUntilChanged keeps sitting at the
+                // bottom to one load; scrolling away and back
+                // re-arms the trigger. The ViewModel guards the
+                // rest (no more pages, already loading).
+                LaunchedEffect(listState) {
+                    snapshotFlow {
+                        val layout = listState.layoutInfo
+                        val lastVisible =
+                            layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+                        lastVisible >= 0 &&
+                            lastVisible >= layout.totalItemsCount - LOAD_MORE_THRESHOLD
+                    }
+                        .distinctUntilChanged()
+                        .collect { nearEnd ->
+                            if (nearEnd) viewModel.loadMore()
+                        }
+                }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f),
+                ) {
                     items(state.tracks, key = { it.key }) { track ->
                         TrackRow(
                             track = track,
                             isCurrent = track.key == currentTrack?.key,
                             onClick = { viewModel.play(track) },
                         )
+                    }
+                    if (state.loadingMore) {
+                        item(key = "loading-more") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }

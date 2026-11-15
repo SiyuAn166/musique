@@ -333,6 +333,24 @@ class SearchViewModelStep3Test {
     }
 
     @Test
+    fun `play logs the tap and proceeds when engine stop throws`() = runTest(testDispatcher) {
+        val logger = MusiqueLogger(LogBuffer(capacity = 50, clock = { 1000L }))
+        val engine = FakePlayerEngine()
+        engine.failStopWith = IllegalStateException("engine is gone")
+        val vm = viewModel(ScriptedRepository(), engine, logger)
+        vm.play(track())
+        // The tap left its trace, the fetching state, and the current
+        // track synchronously, even though stop() threw.
+        val messages = logger.buffer.lines().map { it.message }
+        assertTrue(messages.any { it.contains("play intent=1 bvid=BV1q4FTeBEMj") })
+        assertTrue(messages.any { it.contains("player stop failed intent=1") })
+        assertTrue(vm.playerState.value is PlayerUiState.Fetching)
+        assertEquals(track(), vm.currentTrack.value)
+        advanceUntilIdle()
+        assertEquals(1, engine.playCalls.size)
+    }
+
+    @Test
     fun `clearLogs drops the buffered lines`() = runTest(testDispatcher) {
         val logger = MusiqueLogger(LogBuffer(capacity = 50, clock = { 1000L }))
         val vm = viewModel(ScriptedRepository(), FakePlayerEngine(), logger)

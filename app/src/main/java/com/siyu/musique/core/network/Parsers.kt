@@ -35,6 +35,9 @@ private fun JsonObject.contentOrNull(key: String): String? =
 private fun JsonObject.longOrNull(key: String): Long? =
     (this[key] as? JsonPrimitive)?.longOrNull
 
+private fun JsonObject.intOrNull(key: String): Int? =
+    (this[key] as? JsonPrimitive)?.intOrNull
+
 private fun parseError(what: String, data: JsonElement): BiliParseException =
     BiliParseException(what, preview = data.toString().take(BiliClient.PREVIEW_LENGTH))
 
@@ -77,6 +80,25 @@ fun parseSearchResults(data: JsonElement): List<Track> {
         }
     }
     return tracks
+}
+
+/** One page of keyword search results: the page's video tracks plus whether more pages remain. */
+data class SearchPage(val tracks: List<Track>, val hasMore: Boolean)
+
+/**
+ * Search page: the video tracks from [parseSearchResults] plus
+ * hasMore from data.page < data.numPages (the server caps
+ * numResults at 1000, 20 videos per page). A missing numPages
+ * means no more pages; a missing page falls back to
+ * [requestedPage].
+ */
+fun parseSearchPage(data: JsonElement, requestedPage: Int): SearchPage {
+    val tracks = parseSearchResults(data)
+    val root = data as JsonObject
+    val numPages = root.intOrNull("numPages")
+        ?: return SearchPage(tracks, hasMore = false)
+    val page = root.intOrNull("page") ?: requestedPage
+    return SearchPage(tracks, hasMore = page < numPages)
 }
 
 /** Covers starting with // get an https: prefix; anything else passes through. */

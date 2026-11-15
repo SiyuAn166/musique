@@ -3,9 +3,12 @@ package com.siyu.musique.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,6 +24,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.core.logging.MusiqueLog
 
 /**
  * Debug log screen (Step 3): the last ~300 log lines, oldest first,
@@ -29,6 +33,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  * logcat under the tag "Musique". Log lines never contain full play
  * URLs, cookies, tickets, or keys: hosts, ids, counts, and error
  * kinds only.
+ *
+ * The screen reads the shared logger's buffer directly, with no
+ * ViewModel indirection, and writes one line on every entry, so a
+ * working logger can never show a blank screen; the header always
+ * shows the buffered count, so an empty buffer reads as "0 lines
+ * buffered" instead of a blank screen.
  */
 @Composable
 fun LogScreen(
@@ -36,9 +46,15 @@ fun LogScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val lines by viewModel.logLines.collectAsStateWithLifecycle()
+    val lines by MusiqueLog.shared.buffer.snapshot.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
     val listState = rememberLazyListState()
+
+    // Once per entry: prove the logger is alive by writing into the
+    // very buffer this screen shows.
+    LaunchedEffect(Unit) {
+        MusiqueLog.i("Log", "log screen opened")
+    }
 
     LaunchedEffect(lines.size) {
         if (lines.isNotEmpty()) {
@@ -46,7 +62,11 @@ fun LogScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -69,6 +89,13 @@ fun LogScreen(
                 Text("Clear")
             }
         }
+
+        Text(
+            text = "${lines.size} lines buffered",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
 
         if (lines.isEmpty()) {
             Text(

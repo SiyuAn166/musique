@@ -15,14 +15,41 @@ import com.siyu.musique.model.Track
  * [com.siyu.musique.core.network.BiliParseException]) so the
  * ViewModel can show a distinct message per failure kind.
  */
+/**
+ * The accumulated result of loading one more search page: every
+ * track loaded so far for the current query, the page just loaded,
+ * and whether more pages remain.
+ */
+data class SearchPageResult(val tracks: List<Track>, val page: Int, val hasMore: Boolean)
+
 interface SearchRepository {
     /**
      * Tracks matching [query]. A blank query sends no request and
      * returns an empty list. A BV id goes straight to details; an
      * "av<number>" input converts to a BV id first; anything else is
-     * a keyword search.
+     * a keyword search. A new search resets pagination to page 1.
      */
     suspend fun search(query: String): List<Track>
+
+    /**
+     * Whether the most recent search has another page to load.
+     * False before any search, for single-item BV/AV lookups, and
+     * once the last page is loaded. Repositories that do not page
+     * keep the default false.
+     */
+    val hasMorePages: Boolean
+        get() = false
+
+    /**
+     * Loads the next page of the current keyword search, appends it
+     * to the accumulated list (deduped by bvid), and returns the
+     * accumulated result. A no-op returning the current accumulated
+     * list when there is no current query, a load is already in
+     * flight, or there are no more pages. Repositories that do not
+     * page keep the default, which reports no pages at all.
+     */
+    suspend fun loadMore(): SearchPageResult =
+        SearchPageResult(emptyList(), page = 0, hasMore = false)
 
     /**
      * Fills in [track]'s cid (and title/artist/cover/duration when

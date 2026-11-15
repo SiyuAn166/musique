@@ -48,8 +48,11 @@ nowSeconds = { 1794710448L},
 fun `search parses video results only, cleaning titles and covers`() = runTest {
 val gateway = FakeGateway()
 gateway.enqueue(envelopeResponse(0, SEARCH_DATA))
-val tracks = service(gateway).search("周杰伦")
+val page = service(gateway).search("周杰伦")
+val tracks = page.tracks
 
+// Page 1 of 50 has more pages.
+assertTrue(page.hasMore)
 assertEquals(2, tracks.size)
 val first = tracks[0]
 assertEquals("BV1q4FTeBEMj", first.id)
@@ -72,14 +75,14 @@ assertEquals(13_348_000L, second.duration.inWholeMilliseconds)
 }
 
 @Test
-fun `search sends keyword only, unsigned, first page only`() = runTest {
+fun `search sends keyword and page 1 by default, unsigned`() = runTest {
 val gateway = FakeGateway()
 gateway.enqueue(envelopeResponse(0, SEARCH_DATA))
 service(gateway).search("周杰伦")
 val url = gateway.requests.single().url
 assertTrue(url.startsWith("https://api.bilibili.com/x/web-interface/search/all/v2?keyword="))
+assertTrue(url.contains("page=1"))
 assertTrue(!url.contains("w_rid"))
-assertTrue(!url.contains("page="))
 assertTrue(!url.contains("pn="))
 }
 
@@ -92,7 +95,10 @@ envelopeResponse(
 """{"result":[{"result_type":"bili_user","data":[]}]}""",
 ),
 )
-assertTrue(service(gateway).search("zzz-no-such-song").isEmpty())
+val page = service(gateway).search("zzz-no-such-song")
+assertTrue(page.tracks.isEmpty())
+// No numPages in the response means no more pages.
+assertTrue(!page.hasMore)
 }
 
 @Test

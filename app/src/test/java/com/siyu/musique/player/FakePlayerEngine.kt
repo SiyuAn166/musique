@@ -20,6 +20,9 @@ class FakePlayerEngine : PlayerEngine {
     var releaseCalls: Int = 0
         private set
 
+    /** When set, [stop] throws this instead of returning normally. */
+    var failStopWith: Throwable? = null
+
     override fun setListener(listener: PlayerEngine.Listener?) {
         this.listener = listener
     }
@@ -38,6 +41,7 @@ class FakePlayerEngine : PlayerEngine {
 
     override fun stop() {
         stopCalls++
+        failStopWith?.let { throw it }
     }
 
     override fun release() {
