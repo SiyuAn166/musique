@@ -8,21 +8,33 @@ android {
     namespace = "com.siyu.musique"
     compileSdk = 36
 
-    // One persistent signing key for every debug build (the only
-    // kind CI produces). CI runners are ephemeral, so the
-    // default debug key changed on every run and Android
-    // rejected updates as a signature mismatch. This keystore
-    // lives in this repo, which is PUBLIC: the keystore and the
-    // passwords below are world-readable. Never regenerate the
-    // key casually, or installed copies will refuse the next
-    // update; rotating to a fresh key is a deliberate decision
-    // (it forces one uninstall) and is still pending.
-    signingConfigs {
-        create("musique") {
-            storeFile = file("../keystore/musique.keystore")
-            storePassword = "pGdMxgC2pDRC2dzWBKRu566i"
-            keyAlias = "musique"
-            keyPassword = "pGdMxgC2pDRC2dzWBKRu566i"
+    // Signing: CI signs every debug build with one persistent
+    // key, so updates never trip a signature mismatch (CI
+    // runners are ephemeral, and the default debug key changed
+    // on every run). The keystore lives ONLY in the repo's
+    // GitHub Actions secrets (KEYSTORE_BASE64, KEYSTORE_PASSWORD,
+    // KEY_ALIAS): the workflow decodes it to a temp file and
+    // points KEYSTORE_PATH at it. When KEYSTORE_PATH is unset
+    // (local Studio builds), no signing config is set and AGP
+    // falls back to the default debug key; a local build and a
+    // CI build carry different signatures and must not be mixed
+    // without an uninstall. NEVER commit a keystore or a password
+    // to this repo: it is PUBLIC. The first key (keystore/
+    // musique.keystore, committed Nov 15, 2026) was exposed and
+    // abandoned the same day; the current key has never been in
+    // the repo. Never regenerate the key casually, or installed
+    // copies will refuse the next update.
+    val ciKeystorePath = System.getenv("KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+    if (ciKeystorePath != null) {
+        signingConfigs {
+            create("musique") {
+                storeFile = file(ciKeystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                // PKCS12 stores a single password: the key
+                // password is the store password.
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+            }
         }
     }
 
@@ -44,7 +56,9 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("musique")
+            if (ciKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("musique")
+            }
         }
         release {
             isMinifyEnabled = false
