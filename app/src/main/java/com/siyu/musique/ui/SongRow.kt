@@ -6,22 +6,28 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.siyu.musique.core.network.SMALL_COVER_HEIGHT
+import com.siyu.musique.core.network.SMALL_COVER_WIDTH
+import com.siyu.musique.core.network.sizedCoverUrl
 import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
 
@@ -61,6 +67,9 @@ internal const val PART_ROW_DIVIDER_START_DP: Int =
  * A [compact] row skips the cover entirely and tightens the
  * vertical padding: the indented part rows in the queue sheet,
  * where the video's cover already shows on the parent row.
+ * While [loading] is true the cover dims under a small white
+ * spinner, so a parts lookup in flight reads as loading instead
+ * of a frozen row; compact rows have no cover to dim.
  */
 @Composable
 fun SongRow(
@@ -70,6 +79,7 @@ fun SongRow(
     trailing: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    loading: Boolean = false,
 ) {
     Row(
         modifier = modifier
@@ -86,28 +96,37 @@ fun SongRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!compact) {
-            if (track.cover.isNotEmpty()) {
-                AsyncImage(
-                    model = track.cover,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(SONG_ROW_COVER_SIZE_DP.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clip(RoundedCornerShape(8.dp)),
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(SONG_ROW_COVER_SIZE_DP.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
+            Box(
+                modifier = Modifier
+                    .size(SONG_ROW_COVER_SIZE_DP.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (track.cover.isNotEmpty()) {
+                    AsyncImage(
+                        model = sizedCoverUrl(track.cover, SMALL_COVER_WIDTH, SMALL_COVER_HEIGHT),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
                     Text(
                         text = track.title.firstOrNull()?.toString() ?: "?",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (loading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f)),
+                    )
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White,
                     )
                 }
             }

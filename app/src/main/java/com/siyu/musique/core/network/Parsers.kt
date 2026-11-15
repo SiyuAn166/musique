@@ -114,6 +114,29 @@ fun normalizeCover(pic: String): String = when {
     else -> pic
 }
 
+/** Cover size requested for rows, the mini player, playlist cards, and notification art. */
+internal const val SMALL_COVER_WIDTH: Int = 320
+internal const val SMALL_COVER_HEIGHT: Int = 200
+
+/** Cover size requested for the player page's large cover. */
+internal const val LARGE_COVER_WIDTH: Int = 640
+internal const val LARGE_COVER_HEIGHT: Int = 400
+
+/**
+ * A downsized cover URL: Bilibili's image CDN honors the
+ * `@WxH_1c` suffix and resizes before sending, so a row cover
+ * costs about 9KB instead of about 290KB at full 3456x2160
+ * (verified live Nov 15, 2026). Covers are display-only in a
+ * music player, so no surface needs the full image. Empty URLs,
+ * non-Bilibili hosts, and URLs that already carry a suffix pass
+ * through unchanged: only hdslb honors the suffix, and suffixes
+ * must never stack.
+ */
+fun sizedCoverUrl(url: String, width: Int, height: Int): String {
+    if (url.isEmpty() || !url.contains("hdslb.com/") || url.contains("@")) return url
+    return "$url@${width}w_${height}h_1c"
+}
+
 /** One part of a multi-part video: its cid, part name, and duration. */
 data class VideoPart(val cid: String, val title: String, val duration: Duration)
 

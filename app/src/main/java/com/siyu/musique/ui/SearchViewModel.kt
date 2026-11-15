@@ -347,18 +347,24 @@ class SearchViewModel(
     private val _videoParts = MutableStateFlow<Map<String, List<Track>>>(emptyMap())
     val videoParts: StateFlow<Map<String, List<Track>>> = _videoParts.asStateFlow()
 
-    /** Video ids whose parts are loading right now, so an expand tap never fires twice. */
-    private val partsLoading = mutableSetOf<String>()
+    /**
+     * Video ids whose parts are loading right now, so an expand
+     * tap never fires twice and the row can show a loading state
+     * while the lookup runs. Cleared when the load finishes,
+     * whether it succeeds or fails, so the indicator never sticks.
+     */
+    private val _partsLoadingIds = MutableStateFlow<Set<String>>(emptySet())
+    val partsLoadingIds: StateFlow<Set<String>> = _partsLoadingIds.asStateFlow()
 
     /**
      * Loads [video]'s parts into [videoParts] for list expansion,
      * through the cheap parts probe. A no-op when the parts are
      * already known or a load is in flight. A failure only logs:
-     * the row shows no chevron and the next tap retries.
+     * the row drops back to its idle state and the next tap retries.
      */
     fun loadVideoParts(video: Track) {
-        if (_videoParts.value.containsKey(video.id) || video.id in partsLoading) return
-        partsLoading += video.id
+        if (_videoParts.value.containsKey(video.id) || video.id in _partsLoadingIds.value) return
+        _partsLoadingIds.value = _partsLoadingIds.value + video.id
         viewModelScope.launch {
             try {
                 val parts = repository.fetchParts(video)
@@ -368,7 +374,7 @@ class SearchViewModel(
             } catch (e: Exception) {
                 logger.e(TAG, "parts load failed bvid=${video.id} ${describeError(e)}")
             } finally {
-                partsLoading -= video.id
+                _partsLoadingIds.value = _partsLoadingIds.value - video.id
             }
         }
     }

@@ -29,6 +29,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.siyu.musique.core.network.SMALL_COVER_HEIGHT
+import com.siyu.musique.core.network.SMALL_COVER_WIDTH
+import com.siyu.musique.core.network.sizedCoverUrl
 import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
 import com.siyu.musique.ui.theme.MusiqueIcons
@@ -100,7 +103,7 @@ fun MiniPlayerBar(
             ) {
                 if (track != null && track.cover.isNotEmpty()) {
                     AsyncImage(
-                        model = track.cover,
+                        model = sizedCoverUrl(track.cover, SMALL_COVER_WIDTH, SMALL_COVER_HEIGHT),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

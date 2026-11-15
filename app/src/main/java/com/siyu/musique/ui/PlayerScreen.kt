@@ -52,6 +52,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.siyu.musique.core.network.AudioQuality
+import com.siyu.musique.core.network.LARGE_COVER_HEIGHT
+import com.siyu.musique.core.network.LARGE_COVER_WIDTH
+import com.siyu.musique.core.network.sizedCoverUrl
 import com.siyu.musique.model.RepeatMode
 import com.siyu.musique.model.Track
 import com.siyu.musique.model.formatDuration
@@ -159,7 +162,7 @@ fun PlayerScreen(
         Spacer(modifier = Modifier.height(20.dp))
         if (track != null && track.cover.isNotEmpty()) {
             AsyncImage(
-                model = track.cover,
+                model = sizedCoverUrl(track.cover, LARGE_COVER_WIDTH, LARGE_COVER_HEIGHT),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

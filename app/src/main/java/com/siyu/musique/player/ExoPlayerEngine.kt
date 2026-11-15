@@ -13,6 +13,9 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.siyu.musique.core.logging.MusiqueLog
+import com.siyu.musique.core.network.SMALL_COVER_HEIGHT
+import com.siyu.musique.core.network.SMALL_COVER_WIDTH
+import com.siyu.musique.core.network.sizedCoverUrl
 
 /**
  * [PlayerEngine] backed by the shared Media3 ExoPlayer from
@@ -119,7 +122,13 @@ class ExoPlayerEngine(
             metadataBuilder.setTitle(it.title)
             metadataBuilder.setArtist(it.artist)
             if (it.artworkUrl.isNotBlank()) {
-                metadataBuilder.setArtworkUri(Uri.parse(it.artworkUrl))
+                // The notification needs no more than the small
+                // cover: the full image would download ~290KB.
+                metadataBuilder.setArtworkUri(
+                    Uri.parse(
+                        sizedCoverUrl(it.artworkUrl, SMALL_COVER_WIDTH, SMALL_COVER_HEIGHT),
+                    ),
+                )
             }
         }
         val item = MediaItem.Builder()

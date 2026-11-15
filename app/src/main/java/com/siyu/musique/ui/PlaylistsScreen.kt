@@ -38,6 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.siyu.musique.core.network.SMALL_COVER_HEIGHT
+import com.siyu.musique.core.network.SMALL_COVER_WIDTH
+import com.siyu.musique.core.network.sizedCoverUrl
 import com.siyu.musique.model.Playlist
 import com.siyu.musique.ui.theme.MusiqueIcons
 
@@ -213,7 +216,7 @@ private fun PlaylistCover(
     val cover = playlist.tracks.firstNotNullOfOrNull { it.cover.ifEmpty { null } }
     if (cover != null) {
         AsyncImage(
-            model = cover,
+            model = sizedCoverUrl(cover, SMALL_COVER_WIDTH, SMALL_COVER_HEIGHT),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = modifier

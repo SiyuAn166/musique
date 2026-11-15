@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -28,22 +27,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.model.Track
 import com.siyu.musique.ui.theme.MusiqueIcons
 
 /**
- * Playlist detail screen: a back chevron, the playlist name as a
- * large title, the song count, and flat song rows like the search
- * rows. Tapping a row expands a collection to its parts and plays
+ * Playlist detail screen: a back chevron and action icons on
+ * top, then flat song rows like the search rows, with no title
+ * text. Tapping a row expands a collection to its parts and plays
  * a single video, with the playlist as the queue; tapping a part
  * plays that part.
  * The multi-select button at the top turns on selection mode:
  * checkboxes appear on the rows, tapping a row toggles its
  * checkbox instead of playing, and while any song is selected a
- * minus icon at the top removes all selected songs at once.
+ * trash icon at the top removes all selected songs at once.
  * Tapping the button again leaves selection mode and clears the
  * selection. User-created playlists get a trash icon to delete
  * the whole playlist; the default playlist and the Downloads
@@ -63,6 +61,7 @@ fun PlaylistDetailScreen(
     val downloadRecords by viewModel.downloadRecords.collectAsStateWithLifecycle()
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val videoParts by viewModel.videoParts.collectAsStateWithLifecycle()
+    val partsLoadingIds by viewModel.partsLoadingIds.collectAsStateWithLifecycle()
 
     val playlist = playlists.firstOrNull { it.id == playlistId }
 
@@ -170,7 +169,7 @@ fun PlaylistDetailScreen(
                     },
                 ) {
                     Icon(
-                        imageVector = MusiqueIcons.Remove,
+                        imageVector = MusiqueIcons.Delete,
                         contentDescription = "Remove selected songs",
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
@@ -191,22 +190,6 @@ fun PlaylistDetailScreen(
                 )
             }
         } else {
-            Text(
-                text = playlist.name,
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = songCountLabel(playlist.trackCount),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
             if (playlist.tracks.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -256,6 +239,9 @@ fun PlaylistDetailScreen(
                                     // row's cid may still be empty while the
                                     // playing track's cid was filled by details.
                                     isCurrent = track.id == currentTrack?.id,
+                                    // A parts lookup in flight dims the cover
+                                    // under a spinner instead of a frozen row.
+                                    loading = track.id in partsLoadingIds,
                                     onClick = {
                                         if (selecting) {
                                             selectedKeys = if (track.key in selectedKeys) {

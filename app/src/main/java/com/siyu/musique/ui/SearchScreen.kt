@@ -105,6 +105,7 @@ fun SearchScreen(
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val videoParts by viewModel.videoParts.collectAsStateWithLifecycle()
+    val partsLoadingIds by viewModel.partsLoadingIds.collectAsStateWithLifecycle()
 
     /** Bvids whose parts are expanded in the results list. */
     var expandedVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -377,6 +378,9 @@ fun SearchScreen(
                                     // Rows are videos: stay highlighted while any
                                     // part of the video plays, not just part one.
                                     isCurrent = track.id == currentTrack?.id,
+                                    // A parts lookup in flight dims the cover
+                                    // under a spinner instead of a frozen row.
+                                    loading = track.id in partsLoadingIds,
                                     // Tapping a row expands a collection and
                                     // plays a single video. Unknown parts
                                     // load first; the pending tap above

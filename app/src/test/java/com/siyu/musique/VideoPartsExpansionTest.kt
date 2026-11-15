@@ -13,11 +13,13 @@ import com.siyu.musique.model.Track
 import com.siyu.musique.player.FakePlayerEngine
 import com.siyu.musique.ui.SearchViewModel
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -90,6 +92,26 @@ class VideoPartsExpansionTest {
         override suspend fun fetchParts(track: Track): List<Track> {
             fetchPartsCalls++
             return parts
+        }
+
+        override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream =
+            AudioStream(30280, "https://cdn.example/${track.id}.m4s", 216670L)
+    }
+
+    /** A repository whose parts probe waits on a gate, so tests can observe a load in flight. */
+    private class SuspendingPartsRepository : SearchRepository {
+        val gate = CompletableDeferred<List<Track>>()
+        var fetchPartsCalls: Int = 0
+            private set
+
+        override suspend fun search(query: String): List<Track> = emptyList()
+
+        override suspend fun fetchDetail(track: Track): DetailedTrack =
+            throw RuntimeException("details must not be called for the probe")
+
+        override suspend fun fetchParts(track: Track): List<Track> {
+            fetchPartsCalls++
+            return gate.await()
         }
 
         override suspend fun fetchPlayUrl(track: Track, preference: AudioQuality): AudioStream =
@@ -214,6 +236,34 @@ class VideoPartsExpansionTest {
         )
         advanceUntilIdle()
         assertEquals(1, defaultTracks(vm).size)
+    }
+
+    @Test
+    fun `partsLoadingIds holds the video while the load runs, then clears`() = runTest(testDispatcher) {
+        val parts = listOf(track("BV1LOAD", "1"), track("BV1LOAD", "2"))
+        val repository = SuspendingPartsRepository()
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        vm.loadVideoParts(track("BV1LOAD", cid = ""))
+        runCurrent()
+        assertTrue(vm.partsLoadingIds.value.contains("BV1LOAD"))
+        assertEquals(1, repository.fetchPartsCalls)
+        repository.gate.complete(parts)
+        advanceUntilIdle()
+        assertTrue(vm.partsLoadingIds.value.isEmpty())
+        assertEquals(parts, vm.videoParts.value["BV1LOAD"])
+    }
+
+    @Test
+    fun `partsLoadingIds clears when the load fails`() = runTest(testDispatcher) {
+        val repository = PartsRepository(emptyMap())
+        repository.failDetail = true
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        vm.loadVideoParts(track("BV1FAIL", cid = ""))
+        advanceUntilIdle()
+        assertTrue(vm.partsLoadingIds.value.isEmpty())
+        assertFalse(vm.videoParts.value.containsKey("BV1FAIL"))
     }
 
     @Test
