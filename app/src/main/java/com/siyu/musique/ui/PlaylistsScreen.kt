@@ -156,7 +156,7 @@ fun PlaylistsScreen(
                     Icon(
                         imageVector = MusiqueIcons.Check,
                         contentDescription = "Create",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             },

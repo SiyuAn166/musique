@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -45,22 +46,35 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.model.Track
 import com.siyu.musique.ui.theme.MusiqueIcons
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /** Load the next page when the last visible row is this close to the end of the list. */
 private const val LOAD_MORE_THRESHOLD = 3
+
+/** How long the add-to-playlist notice stays up. */
+private const val ADD_NOTICE_DURATION_MS: Long = 2000L
+
+/** How far the add notice floats above the bottom of the screen: clears the mini player bar. */
+private const val ADD_NOTICE_BOTTOM_OFFSET_DP: Int = 88
 
 /**
  * Search screen: no title, just the three-dot icon (settings
@@ -71,7 +85,9 @@ private const val LOAD_MORE_THRESHOLD = 3
  * magnifier icon. Typing shows a suggestion dropdown from
  * Bilibili's suggest API under the field; tapping a suggestion
  * searches it. Tapping a row plays it (cid fill + fresh play URL
- * first); the plus icon on a row opens the playlist chooser.
+ * first); the plus icon on a row opens the playlist chooser, and
+ * adding shows a short popup notice (a different one when the
+ * track is already in the playlist).
  * Search errors show a distinct message per failure kind with a
  * retry icon button; player errors show their own message with a
  * retry icon button above the mini player bar.
@@ -100,6 +116,11 @@ fun SearchScreen(
 
     /** The track waiting for a playlist choice, or null when the chooser is closed. */
     var chooserTrack by remember { mutableStateOf<Track?>(null) }
+
+    /** Short-lived notice after adding a track, or null when hidden. */
+    var addNotice by remember { mutableStateOf<String?>(null) }
+    var addNoticeDismissJob by remember { mutableStateOf<Job?>(null) }
+    val noticeScope = rememberCoroutineScope()
 
     /** Whether the settings (three-dot) menu is open. Settings and the debug log live inside it. */
     var settingsMenuExpanded by remember { mutableStateOf(false) }
@@ -188,7 +209,7 @@ fun SearchScreen(
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
                 disabledIndicatorColor = Color.Transparent,
-                cursorColor = MaterialTheme.colorScheme.primary,
+                cursorColor = MaterialTheme.colorScheme.onSurface,
                 focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
             ),
@@ -335,7 +356,7 @@ fun SearchScreen(
                             Icon(
                                 imageVector = MusiqueIcons.Refresh,
                                 contentDescription = "Retry search",
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
@@ -375,9 +396,9 @@ fun SearchScreen(
                             trailing = {
                                 IconButton(onClick = { chooserTrack = track }) {
                                     Icon(
-                                        imageVector = MusiqueIcons.AddCircleOutline,
+                                        imageVector = MusiqueIcons.Add,
                                         contentDescription = "Add to playlist",
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             },
@@ -447,8 +468,48 @@ fun SearchScreen(
         )
     }
 
-    // Playlist chooser: tapping a playlist adds the track (adding a
-    // track already present is a no-op in the ViewModel) and closes.
+    // Add notice: a small black pill floating above the mini
+    // player bar for a couple of seconds after a track is added.
+    // Tapping outside dismisses it early.
+    val notice = addNotice
+    if (notice != null) {
+        val noticeOffsetPx = with(LocalDensity.current) {
+            ADD_NOTICE_BOTTOM_OFFSET_DP.dp.roundToPx()
+        }
+        Popup(
+            alignment = Alignment.BottomCenter,
+            offset = IntOffset(0, -noticeOffsetPx),
+            onDismissRequest = { addNotice = null },
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.onSurface,
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 6.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = notice,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.surface,
+                    )
+                }
+            }
+        }
+    }
+
+    // Playlist chooser: tapping a playlist adds the track, shows a
+    // short notice (a different one when the track is already
+    // present), and closes.
     val pending = chooserTrack
     if (pending != null) {
         ModalBottomSheet(
@@ -471,8 +532,14 @@ fun SearchScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                viewModel.addTrackToPlaylist(playlist.id, pending)
+                                val added = viewModel.addTrackToPlaylist(playlist.id, pending)
                                 chooserTrack = null
+                                addNoticeDismissJob?.cancel()
+                                addNotice = if (added) "添加成功" else "已在歌单中"
+                                addNoticeDismissJob = noticeScope.launch {
+                                    delay(ADD_NOTICE_DURATION_MS)
+                                    addNotice = null
+                                }
                             }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -528,7 +595,7 @@ fun SearchScreen(
                     Icon(
                         imageVector = MusiqueIcons.Check,
                         contentDescription = "Create",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             },

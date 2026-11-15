@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -283,6 +284,24 @@ class PlaylistViewModelTest {
             advanceUntilIdle()
             assertEquals(listOf(kept), vm.playlists.value.single().tracks)
         }
+
+    @Test
+    fun `addTrackToPlaylist reports added versus already present`() = runTest(testDispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        val track = track("BV1ADD00001")
+        assertTrue(vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track))
+        assertFalse(vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track))
+        assertEquals(listOf(track), vm.playlists.value.single().tracks)
+    }
+
+    @Test
+    fun `addTrackToPlaylist reports false for an unknown playlist`() = runTest(testDispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+        assertFalse(vm.addTrackToPlaylist("no-such-id", track("BV1ADD00002")))
+        assertTrue(vm.playlists.value.single().tracks.isEmpty())
+    }
 
     @Test
     fun `removeTracksFromPlaylist removes several at once and persists`() =

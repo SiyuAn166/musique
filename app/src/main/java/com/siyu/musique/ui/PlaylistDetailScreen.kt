@@ -76,7 +76,7 @@ fun PlaylistDetailScreen(
                 Icon(
                     imageVector = MusiqueIcons.ChevronLeft,
                     contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
             Spacer(modifier = Modifier.weight(1f))

@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.siyu.musique.model.Track
@@ -83,11 +84,8 @@ fun SongRow(
             Text(
                 text = track.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
             )
             Spacer(modifier = Modifier.height(2.dp))

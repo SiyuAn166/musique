@@ -1045,8 +1045,14 @@ class SearchViewModel(
      * is logged. The stored copy never carries a play URL. An
      * unknown playlist id is a no-op.
      */
-    fun addTrackToPlaylist(playlistId: String, track: Track) {
-        val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
+    /**
+     * Adds [track] to one playlist (stored without its play URL).
+     * Returns true when the track was actually added, false when it
+     * was already present or the playlist does not exist, so the UI
+     * can report which one happened.
+     */
+    fun addTrackToPlaylist(playlistId: String, track: Track): Boolean {
+        val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return false
         val stored = track.copy(playUrl = "")
         if (target.tracks.any { it.key == stored.key }) {
             logger.i(
@@ -1054,7 +1060,7 @@ class SearchViewModel(
                 "playlist add skipped: already present bvid=${track.id} cid=${track.cid} " +
                     "playlist=$playlistId",
             )
-            return
+            return false
         }
         val updated = _playlists.value.map { playlist ->
             if (playlist.id == playlistId) {
@@ -1066,6 +1072,7 @@ class SearchViewModel(
         _playlists.value = updated
         logger.i(TAG, "playlist add bvid=${track.id} cid=${track.cid} playlist=$playlistId")
         persistPlaylists(updated)
+        return true
     }
 
     /**

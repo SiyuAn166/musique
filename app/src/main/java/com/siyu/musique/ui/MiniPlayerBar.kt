@@ -160,8 +160,8 @@ fun MiniPlayerBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = Color.Transparent,
+                color = MaterialTheme.colorScheme.onSurface,
+                trackColor = MaterialTheme.colorScheme.outlineVariant,
             )
         }
     }

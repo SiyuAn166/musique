@@ -425,7 +425,7 @@ fun PlayerScreen(
                                     Icon(
                                         imageVector = MusiqueIcons.Check,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             },
