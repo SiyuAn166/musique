@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -545,7 +546,31 @@ fun PlayerScreen(
                         }
                     }
                 }
+                val queueListState = rememberLazyListState()
+                // Opening the sheet jumps straight to the playing
+                // track instead of starting at the top of the
+                // queue: the exact part row when it is known,
+                // else the playing video's row. Only on open:
+                // switching tracks while the sheet stays open
+                // must not yank the list out from under the user.
+                LaunchedEffect(Unit) {
+                    val partIndex = sheetRows.indexOfFirst { row ->
+                        row is QueueSheetRow.Part && row.track.key == track?.key
+                    }
+                    val currentIndex = if (partIndex >= 0) {
+                        partIndex
+                    } else {
+                        sheetRows.indexOfFirst { row ->
+                            row is QueueSheetRow.Video && row.track.id == track?.id
+                        }
+                    }
+                    if (currentIndex >= 0) {
+                        // +1: the "Queue" header is the first item.
+                        queueListState.scrollToItem(currentIndex + 1)
+                    }
+                }
                 LazyColumn(
+                    state = queueListState,
                     modifier = Modifier.padding(bottom = 32.dp),
                 ) {
                     item {
