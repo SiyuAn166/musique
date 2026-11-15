@@ -21,6 +21,15 @@ import com.siyu.musique.R
  * itself holds one item at a time and knows nothing about the
  * queue.
  *
+ * The session is added to the service explicitly in [onCreate]:
+ * the service only runs its foreground notification machinery
+ * for added sessions, and nothing in this app ever binds a
+ * MediaController (the UI drives the player directly), so the
+ * automatic add through onGetSession never runs. Without the
+ * explicit add, startForeground is never called and the system
+ * kills the process with ForegroundServiceDidNotStartInTime
+ * Exception shortly after playback starts (seen Nov 15, 2026).
+ *
  * Statically reviewed only: it needs Android and Media3, so it
  * cannot compile under kotlinc here. The first real compile is
  * the Gradle build.
@@ -31,12 +40,16 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        getOrCreateSession()
+        val session = getOrCreateSession()
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider(this).apply {
                 setSmallIcon(R.drawable.ic_notification)
             },
         )
+        // Without this, the service never calls startForeground:
+        // see the class KDoc. Re-adding the same session later
+        // (when a controller binds) is a no-op.
+        addSession(session)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession =
