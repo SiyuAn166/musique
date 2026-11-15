@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ Material You themed launcher icon.
+     The system dynamically tints this monochrome path with user wallpaper colors. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M 32.4,36.6 L 32.4,71.4 M 43.2,45.6 L 43.2,62.4 M 54.0,40.6 L 54.0,67.4 M 64.8,45.6 L 64.8,62.4 M 75.6,36.6 L 75.6,71.4"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeWidth="7.2" />
+</vector>

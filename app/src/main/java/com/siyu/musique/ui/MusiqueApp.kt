@@ -77,6 +77,9 @@ fun MusiqueApp(
                     viewModel = viewModel,
                     onOpenPlayer = { navController.navigate("player") },
                     onOpenPlaylists = { navController.navigate("playlists") },
+                    onOpenPlaylistDetail = { playlistId ->
+                        navController.navigate("playlist/$playlistId")
+                    },
                     onOpenLog = { navController.navigate("log") },
                     onOpenSettings = { navController.navigate("settings") },
                 )

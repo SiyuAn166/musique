@@ -43,7 +43,7 @@ import com.siyu.musique.ui.theme.MusiqueIcons
  */
 @Composable
 fun MiniPlayerBar(
-    track: Track,
+    track: Track?,
     isPlaying: Boolean,
     playerState: PlayerUiState,
     progress: PlaybackProgress,
@@ -52,11 +52,15 @@ fun MiniPlayerBar(
     onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val statusLine = when (playerState) {
-        PlayerUiState.Fetching, PlayerUiState.Buffering -> "Loading…"
-        PlayerUiState.Paused -> "Paused"
-        is PlayerUiState.Error -> "Playback error"
-        else -> "${track.artist} · ${formatDuration(track.duration)}"
+    val statusLine = if (track == null) {
+        "Tap to open player"
+    } else {
+        when (playerState) {
+            PlayerUiState.Fetching, PlayerUiState.Buffering -> "Loading…"
+            PlayerUiState.Paused -> "Paused"
+            is PlayerUiState.Error -> "Playback error"
+            else -> "${track.artist} · ${formatDuration(track.duration)}"
+        }
     }
     val fraction = if (progress.durationMs > 0) {
         (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -79,7 +83,7 @@ fun MiniPlayerBar(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (track.cover.isNotEmpty()) {
+                if (track != null && track.cover.isNotEmpty()) {
                     AsyncImage(
                         model = track.cover,
                         contentDescription = null,
@@ -95,12 +99,20 @@ fun MiniPlayerBar(
                             .size(40.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant),
-                    )
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = MusiqueIcons.QueueMusic,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = track.title,
+                        text = track?.title ?: "Musique",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -122,7 +134,10 @@ fun MiniPlayerBar(
                         )
                     }
                 } else {
-                    IconButton(onClick = onTogglePlayPause) {
+                    IconButton(
+                        onClick = onTogglePlayPause,
+                        enabled = track != null,
+                    ) {
                         Icon(
                             imageVector = if (isPlaying) {
                                 MusiqueIcons.Pause
@@ -130,7 +145,11 @@ fun MiniPlayerBar(
                                 MusiqueIcons.PlayArrow
                             },
                             contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = MaterialTheme.colorScheme.onSurface,
+                            tint = if (track != null) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            },
                             modifier = Modifier.size(28.dp),
                         )
                     }

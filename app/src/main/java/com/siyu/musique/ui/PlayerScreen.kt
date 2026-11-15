@@ -149,263 +149,287 @@ fun PlayerScreen(
             }
         }
         Spacer(modifier = Modifier.height(20.dp))
-        if (track == null) {
-            Text(
-                text = "Nothing playing yet. Go back and tap a track.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (track != null && track.cover.isNotEmpty()) {
+            AsyncImage(
+                model = track.cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .shadow(12.dp, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
             )
         } else {
-            if (track.cover.isNotEmpty()) {
-                AsyncImage(
-                    model = track.cover,
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .shadow(12.dp, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = MusiqueIcons.QueueMusic,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .shadow(12.dp, RoundedCornerShape(12.dp))
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .shadow(12.dp, RoundedCornerShape(12.dp))
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(64.dp),
                 )
             }
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 2,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 1,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = track?.title ?: "Musique",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 2,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = track?.artist ?: "Select a song from search or playlists",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 1,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
-            val durationMs = progress.durationMs.coerceAtLeast(1L)
-            val shownPositionMs = (dragPositionMs ?: progress.positionMs)
-                .coerceIn(0L, durationMs)
-            SlimSlider(
-                value = shownPositionMs.toFloat(),
-                onValueChange = { dragPositionMs = it.toLong() },
-                valueRange = 0f..durationMs.toFloat(),
-                onValueChangeFinished = {
+        val durationMs = if (track != null) progress.durationMs.coerceAtLeast(1L) else 1L
+        val shownPositionMs = if (track != null) {
+            (dragPositionMs ?: progress.positionMs).coerceIn(0L, durationMs)
+        } else {
+            0L
+        }
+        SlimSlider(
+            value = shownPositionMs.toFloat(),
+            onValueChange = { if (track != null) dragPositionMs = it.toLong() },
+            valueRange = 0f..durationMs.toFloat(),
+            onValueChangeFinished = {
+                if (track != null) {
                     dragPositionMs?.let { viewModel.seekTo(it) }
                     dragPositionMs = null
-                },
-                modifier = Modifier.fillMaxWidth(),
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = if (track != null) formatDuration(shownPositionMs.milliseconds) else "0:00",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(modifier = Modifier.fillMaxWidth()) {
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = if (track != null) formatRemaining(durationMs.milliseconds, shownPositionMs.milliseconds) else "0:00",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        val errorState = playerState as? PlayerUiState.Error
+        if (errorState != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = formatDuration(shownPositionMs.milliseconds),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = errorState.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
                 )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = formatRemaining(durationMs.milliseconds, shownPositionMs.milliseconds),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                IconButton(onClick = { viewModel.retryPlayback() }) {
+                    Icon(
+                        imageVector = MusiqueIcons.Refresh,
+                        contentDescription = "Retry playback",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ModeButton(
+                icon = MusiqueIcons.Shuffle,
+                contentDescription = if (shuffleEnabled) "Shuffle on" else "Shuffle off",
+                active = shuffleEnabled,
+                onClick = { viewModel.toggleShuffle() },
+            )
+            IconButton(
+                onClick = { viewModel.playPrevious() },
+                enabled = track != null,
+            ) {
+                Icon(
+                    imageVector = MusiqueIcons.SkipPrevious,
+                    contentDescription = "Previous",
+                    tint = if (track != null) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    },
+                    modifier = Modifier.size(44.dp),
                 )
             }
+            IconButton(
+                onClick = { viewModel.togglePlayPause() },
+                enabled = track != null || queue.isNotEmpty(),
+                modifier = Modifier
+                    .size(72.dp)
+                    .background(
+                        if (track != null || queue.isNotEmpty()) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        },
+                        CircleShape,
+                    ),
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) {
+                        MusiqueIcons.Pause
+                    } else {
+                        MusiqueIcons.PlayArrow
+                    },
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            IconButton(
+                onClick = { viewModel.playNext() },
+                enabled = track != null,
+            ) {
+                Icon(
+                    imageVector = MusiqueIcons.SkipNext,
+                    contentDescription = "Next",
+                    tint = if (track != null) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    },
+                    modifier = Modifier.size(44.dp),
+                )
+            }
+            ModeButton(
+                icon = if (repeatMode == RepeatMode.ONE) {
+                    MusiqueIcons.RepeatOne
+                } else {
+                    MusiqueIcons.Repeat
+                },
+                contentDescription = when (repeatMode) {
+                    RepeatMode.OFF -> "Repeat off"
+                    RepeatMode.ALL -> "Repeat all"
+                    RepeatMode.ONE -> "Repeat one"
+                },
+                active = repeatMode != RepeatMode.OFF,
+                onClick = { viewModel.cycleRepeatMode() },
+            )
+        }
 
-            val errorState = playerState as? PlayerUiState.Error
-            if (errorState != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+        Spacer(modifier = Modifier.height(24.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // The end icons are buttons: tap for mute / full volume.
+            IconButton(
+                onClick = { viewModel.setVolume(0f) },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = MusiqueIcons.VolumeDown,
+                    contentDescription = "Mute",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            SlimSlider(
+                value = volume,
+                onValueChange = { viewModel.setVolume(it) },
+                valueRange = 0f..1f,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = { viewModel.setVolume(1f) },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = MusiqueIcons.VolumeUp,
+                    contentDescription = "Maximum volume",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = { queueSheetOpen = true }) {
+                Icon(
+                    imageVector = MusiqueIcons.QueueMusic,
+                    contentDescription = "Queue",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            Box {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    // Flat light grey, like the mockup: tonal
+                    // elevation tints the chip pink instead.
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.clickable { qualityMenuExpanded = true },
                 ) {
-                    Text(
-                        text = errorState.message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(onClick = { viewModel.retryPlayback() }) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = qualityPreference.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                         Icon(
-                            imageVector = MusiqueIcons.Refresh,
-                            contentDescription = "Retry playback",
-                            tint = MaterialTheme.colorScheme.error,
+                            imageVector = MusiqueIcons.ChevronDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
                         )
                     }
                 }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ModeButton(
-                    icon = MusiqueIcons.Shuffle,
-                    contentDescription = if (shuffleEnabled) "Shuffle on" else "Shuffle off",
-                    active = shuffleEnabled,
-                    onClick = { viewModel.toggleShuffle() },
-                )
-                IconButton(onClick = { viewModel.playPrevious() }) {
-                    Icon(
-                        imageVector = MusiqueIcons.SkipPrevious,
-                        contentDescription = "Previous",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(44.dp),
-                    )
-                }
-                IconButton(
-                    onClick = { viewModel.togglePlayPause() },
-                    modifier = Modifier
-                        .size(72.dp)
-                        .background(
-                            MaterialTheme.colorScheme.onSurface,
-                            CircleShape,
-                        ),
+                DropdownMenu(
+                    expanded = qualityMenuExpanded,
+                    onDismissRequest = { qualityMenuExpanded = false },
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) {
-                            MusiqueIcons.Pause
-                        } else {
-                            MusiqueIcons.PlayArrow
-                        },
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.size(32.dp),
-                    )
-                }
-                IconButton(onClick = { viewModel.playNext() }) {
-                    Icon(
-                        imageVector = MusiqueIcons.SkipNext,
-                        contentDescription = "Next",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(44.dp),
-                    )
-                }
-                ModeButton(
-                    icon = if (repeatMode == RepeatMode.ONE) {
-                        MusiqueIcons.RepeatOne
-                    } else {
-                        MusiqueIcons.Repeat
-                    },
-                    contentDescription = when (repeatMode) {
-                        RepeatMode.OFF -> "Repeat off"
-                        RepeatMode.ALL -> "Repeat all"
-                        RepeatMode.ONE -> "Repeat one"
-                    },
-                    active = repeatMode != RepeatMode.OFF,
-                    onClick = { viewModel.cycleRepeatMode() },
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // The end icons are buttons: tap for mute / full volume.
-                IconButton(
-                    onClick = { viewModel.setVolume(0f) },
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(
-                        imageVector = MusiqueIcons.VolumeDown,
-                        contentDescription = "Mute",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                SlimSlider(
-                    value = volume,
-                    onValueChange = { viewModel.setVolume(it) },
-                    valueRange = 0f..1f,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(
-                    onClick = { viewModel.setVolume(1f) },
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(
-                        imageVector = MusiqueIcons.VolumeUp,
-                        contentDescription = "Maximum volume",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { queueSheetOpen = true }) {
-                    Icon(
-                        imageVector = MusiqueIcons.QueueMusic,
-                        contentDescription = "Queue",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-                Box {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        // Flat light grey, like the mockup: tonal
-                        // elevation tints the chip pink instead.
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.clickable { qualityMenuExpanded = true },
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = qualityPreference.label,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Icon(
-                                imageVector = MusiqueIcons.ChevronDown,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                    DropdownMenu(
-                        expanded = qualityMenuExpanded,
-                        onDismissRequest = { qualityMenuExpanded = false },
-                    ) {
-                        AudioQuality.entries.forEach { quality ->
-                            DropdownMenuItem(
-                                text = { Text(quality.label) },
-                                onClick = {
-                                    viewModel.setQualityPreference(quality)
-                                    qualityMenuExpanded = false
-                                },
-                                leadingIcon = {
-                                    if (quality == qualityPreference) {
-                                        Icon(
-                                            imageVector = MusiqueIcons.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                },
-                            )
-                        }
+                    AudioQuality.entries.forEach { quality ->
+                        DropdownMenuItem(
+                            text = { Text(quality.label) },
+                            onClick = {
+                                viewModel.setQualityPreference(quality)
+                                qualityMenuExpanded = false
+                            },
+                            leadingIcon = {
+                                if (quality == qualityPreference) {
+                                    Icon(
+                                        imageVector = MusiqueIcons.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            },
+                        )
                     }
                 }
             }

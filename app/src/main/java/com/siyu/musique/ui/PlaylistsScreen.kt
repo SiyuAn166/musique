@@ -121,18 +121,15 @@ fun PlaylistsScreen(
             }
         }
 
-        val track = currentTrack
-        if (track != null) {
-            MiniPlayerBar(
-                track = track,
-                isPlaying = isPlaying,
-                playerState = playerState,
-                progress = progress,
-                onTogglePlayPause = { viewModel.togglePlayPause() },
-                onRetry = { viewModel.retryPlayback() },
-                onOpenPlayer = onOpenPlayer,
-            )
-        }
+        MiniPlayerBar(
+            track = currentTrack,
+            isPlaying = isPlaying,
+            playerState = playerState,
+            progress = progress,
+            onTogglePlayPause = { viewModel.togglePlayPause() },
+            onRetry = { viewModel.retryPlayback() },
+            onOpenPlayer = onOpenPlayer,
+        )
     }
 
     if (showCreateDialog) {
@@ -177,7 +174,7 @@ fun PlaylistsScreen(
 }
 
 @Composable
-private fun PlaylistRow(
+internal fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,

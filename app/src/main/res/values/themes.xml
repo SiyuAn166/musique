@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Step 0 theme placeholder. The real look lives in the Compose
-         MusiqueTheme (ui/theme/Theme.kt); this only styles the window
-         behind the Compose content (splash background, status bar). -->
     <style name="Theme.Musique" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/white</item>
     </style>

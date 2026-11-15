@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -74,6 +75,7 @@ fun SearchScreen(
     viewModel: SearchViewModel,
     onOpenPlayer: () -> Unit,
     onOpenPlaylists: () -> Unit,
+    onOpenPlaylistDetail: (String) -> Unit = {},
     onOpenLog: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -85,6 +87,9 @@ fun SearchScreen(
     val progress by viewModel.playbackProgress.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+
+    var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
 
     /** The track waiting for a playlist choice, or null when the chooser is closed. */
     var chooserTrack by remember { mutableStateOf<Track?>(null) }
@@ -104,6 +109,13 @@ fun SearchScreen(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconButton(onClick = onOpenPlayer) {
+                Icon(
+                    imageVector = MusiqueIcons.QueueMusic,
+                    contentDescription = "Player",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             IconButton(onClick = onOpenPlaylists) {
                 Icon(
                     imageVector = MusiqueIcons.ListBulleted,
@@ -191,16 +203,48 @@ fun SearchScreen(
 
         when (val state = searchState) {
             SearchUiState.Idle -> {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Type a keyword and search.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Playlists",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            IconButton(
+                                onClick = {
+                                    newPlaylistName = ""
+                                    showCreatePlaylistDialog = true
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = MusiqueIcons.AddCircleOutline,
+                                    contentDescription = "Create playlist",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
+                    }
+                    itemsIndexed(playlists, key = { _, playlist -> playlist.id }) { index, playlist ->
+                        PlaylistRow(
+                            playlist = playlist,
+                            onClick = { onOpenPlaylistDetail(playlist.id) },
+                        )
+                        if (index < playlists.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 92.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
+                    }
                 }
             }
             SearchUiState.Loading -> {
@@ -341,18 +385,15 @@ fun SearchScreen(
             }
         }
 
-        val track = currentTrack
-        if (track != null) {
-            MiniPlayerBar(
-                track = track,
-                isPlaying = isPlaying,
-                playerState = playerState,
-                progress = progress,
-                onTogglePlayPause = { viewModel.togglePlayPause() },
-                onRetry = { viewModel.retryPlayback() },
-                onOpenPlayer = onOpenPlayer,
-            )
-        }
+        MiniPlayerBar(
+            track = currentTrack,
+            isPlaying = isPlaying,
+            playerState = playerState,
+            progress = progress,
+            onTogglePlayPause = { viewModel.togglePlayPause() },
+            onRetry = { viewModel.retryPlayback() },
+            onOpenPlayer = onOpenPlayer,
+        )
     }
 
     // Playlist chooser: tapping a playlist adds the track (adding a
