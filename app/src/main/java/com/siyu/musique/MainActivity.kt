@@ -27,8 +27,16 @@ class MainActivity : ComponentActivity() {
         MusiqueLog.i("App", "Musique started")
         val repository = BiliDependencies.createSearchRepository(applicationContext)
         val playerEngine = BiliDependencies.createPlayerEngine(applicationContext)
+        val qualityPreferenceStore =
+            BiliDependencies.createQualityPreferenceStore(applicationContext)
+        val playlistStore = BiliDependencies.createPlaylistStore(applicationContext)
         setContent {
-            MusiqueApp(repository = repository, playerEngine = playerEngine)
+            MusiqueApp(
+                repository = repository,
+                playerEngine = playerEngine,
+                qualityPreferenceStore = qualityPreferenceStore,
+                playlistStore = playlistStore,
+            )
         }
     }
 }
