@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -160,6 +161,20 @@ fun SearchScreen(
         if (safeValue.text.isBlank()) viewModel.search("")
     }
 
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    /**
+     * Submits a search and hides the keyboard, so the results
+     * get the full screen instead of sitting behind the IME.
+     * All three submit paths (search icon, IME search action,
+     * suggestion tap) go through here. Clearing the field does
+     * not hide the keyboard: the user is still editing.
+     */
+    fun submitSearch(query: String) {
+        viewModel.search(query)
+        keyboardController?.hide()
+    }
+
     // System Back clears the field while a search is showing (or
     // text is typed); a Back on a clean search tab pops back to
     // the Home tab as usual.
@@ -180,7 +195,7 @@ fun SearchScreen(
             onValueChange = { applyQueryField(it) },
             placeholder = { Text("Search songs") },
             leadingIcon = {
-                IconButton(onClick = { viewModel.search(queryField.text) }) {
+                IconButton(onClick = { submitSearch(queryField.text) }) {
                     Icon(
                         imageVector = MusiqueIcons.Search,
                         contentDescription = "Search",
@@ -214,7 +229,7 @@ fun SearchScreen(
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(
-                onSearch = { viewModel.search(queryField.text) },
+                onSearch = { submitSearch(queryField.text) },
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -253,7 +268,7 @@ fun SearchScreen(
                                             selection = TextRange(suggestion.length),
                                         ),
                                     )
-                                    viewModel.search(suggestion)
+                                    submitSearch(suggestion)
                                 }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
