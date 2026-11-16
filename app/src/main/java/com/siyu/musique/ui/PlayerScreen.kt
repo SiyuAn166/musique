@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -190,6 +191,18 @@ fun PlayerScreen(
             // the background would move only the content and
             // leave the white background covering the screen.
             .offset { IntOffset(0, dismissOffset.value.roundToInt()) }
+            // The further the page slides down, the more it fades:
+            // fully opaque at rest, fully transparent off-screen,
+            // so the dismiss ends in a fade instead of a pop.
+            // This sits outside the background, so the background
+            // fades with the content.
+            .graphicsLayer {
+                alpha = if (pageHeightPx > 0) {
+                    (1f - dismissOffset.value / pageHeightPx).coerceIn(0f, 1f)
+                } else {
+                    1f
+                }
+            }
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
