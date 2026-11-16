@@ -30,20 +30,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.R
 import com.siyu.musique.ui.theme.MusiqueIcons
-import com.siyu.musique.ui.theme.MusiqueScriptFamily
 
 /**
- * Home tab: the script "Musique" wordmark centered at the top, a
- * "Playlists" header row with a plus icon to create a playlist,
- * and the playlist cards (the default playlist, the Downloads
- * playlist, then the user playlists, in that order). Tapping a
+ * Home tab: a "Playlists" header row with a plus icon to create
+ * a playlist, and the playlist cards (the default playlist, the
+ * Downloads playlist, then the user playlists, in that order). Tapping a
  * card opens its detail screen. No search field and no header
  * buttons: search lives on its own tab, and settings lives on
  * its own tab too. The shared mini player bar and the tab bar
@@ -69,17 +65,6 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        Text(
-            text = "Musique",
-            fontFamily = MusiqueScriptFamily,
-            fontSize = 40.sp,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-        )
-
         LazyColumn(modifier = Modifier.weight(1f)) {
             item {
                 Row(
