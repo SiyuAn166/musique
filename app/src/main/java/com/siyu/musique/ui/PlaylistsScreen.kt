@@ -72,6 +72,10 @@ fun PlaylistsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // Opaque: during the predictive back gesture the
+            // outgoing page slides over the incoming one, and a
+            // transparent page would show both at once.
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Row(

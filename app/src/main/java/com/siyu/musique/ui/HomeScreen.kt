@@ -1,5 +1,6 @@
 package com.siyu.musique.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -60,6 +61,10 @@ fun HomeScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // Opaque: during the predictive back gesture the
+            // outgoing page slides over the incoming one, and a
+            // transparent page would show both at once.
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Text(
