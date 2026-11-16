@@ -33,10 +33,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -52,11 +54,13 @@ import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryDownloadStore
 import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaybackStateStore
+import com.siyu.musique.data.InMemoryLanguagePreferenceStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.NoOpAudioFileDownloader
 import com.siyu.musique.data.NoOpUpdateApkInstaller
 import com.siyu.musique.data.NoOpUpdateChecker
+import com.siyu.musique.data.LanguagePreferenceStore
 import com.siyu.musique.data.PlaybackModeStore
 import com.siyu.musique.data.PlaybackStateStore
 import com.siyu.musique.data.PlaylistStore
@@ -66,6 +70,7 @@ import com.siyu.musique.data.UpdateApkInstaller
 import com.siyu.musique.data.UpdateChecker
 import com.siyu.musique.data.defaultDownloadsDir
 import com.siyu.musique.data.defaultUpdatesDir
+import com.siyu.musique.R
 import com.siyu.musique.player.NoOpPlayerEngine
 import com.siyu.musique.player.PlayerEngine
 import com.siyu.musique.ui.theme.MusiqueIcons
@@ -108,6 +113,7 @@ fun MusiqueApp(
     playerEngine: PlayerEngine = NoOpPlayerEngine,
     appCache: AppCache = InMemoryAppCache(),
     qualityPreferenceStore: QualityPreferenceStore = InMemoryQualityPreferenceStore(),
+    languagePreferenceStore: LanguagePreferenceStore = InMemoryLanguagePreferenceStore(),
     playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
@@ -137,6 +143,7 @@ fun MusiqueApp(
             updateApkInstaller,
             installedVersionName,
             updatesDir,
+            languagePreferenceStore = languagePreferenceStore,
         ),
     )
 
@@ -320,6 +327,7 @@ fun MusiqueApp(
                         ) {
                             TAB_ITEMS.forEach { item ->
                                 val selected = currentRoute == item.route
+                                val label = stringResource(item.labelRes)
                                 val tabTint = if (selected) {
                                     MaterialTheme.colorScheme.onSurface
                                 } else {
@@ -366,13 +374,13 @@ fun MusiqueApp(
                                 ) {
                                     Icon(
                                         imageVector = item.icon,
-                                        contentDescription = item.label,
+                                        contentDescription = label,
                                         tint = tabTint,
                                         modifier = Modifier.size(24.dp),
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = item.label,
+                                        text = label,
                                         style = MaterialTheme.typography.labelSmall,
                                         color = tabTint,
                                     )
@@ -408,14 +416,14 @@ private const val TAB_BAR_HEIGHT_DP: Int = 56
 /** Tab taps are ignored for this long after the keyboard hides, so a dismiss tap falling through cannot switch tabs. */
 private const val IME_HIDE_TAP_GUARD_MS: Long = 300L
 
-/** One bottom tab: its route, label, and icon. */
-private data class TabItem(val route: String, val label: String, val icon: ImageVector)
+/** One bottom tab: its route, its label's string resource, and its icon. */
+private data class TabItem(val route: String, @param:StringRes val labelRes: Int, val icon: ImageVector)
 
 /** The three bottom tabs, in order. */
 private val TAB_ITEMS: List<TabItem> = listOf(
-    TabItem("home", "Home", MusiqueIcons.Home),
-    TabItem("search", "Search", MusiqueIcons.Search),
-    TabItem("settings", "Settings", MusiqueIcons.Settings),
+    TabItem("home", R.string.tab_home, MusiqueIcons.Home),
+    TabItem("search", R.string.tab_search, MusiqueIcons.Search),
+    TabItem("settings", R.string.tab_settings, MusiqueIcons.Settings),
 )
 
 /** The routes that show the tab bar. */

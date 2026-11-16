@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -61,6 +62,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.R
 import com.siyu.musique.model.Track
 import com.siyu.musique.ui.theme.MusiqueIcons
 import kotlinx.coroutines.Job
@@ -142,6 +144,12 @@ fun SearchScreen(
     var addNoticeDismissJob by remember { mutableStateOf<Job?>(null) }
     val noticeScope = rememberCoroutineScope()
 
+    // The add notices, resolved once per composition: the
+    // chooser's click lambda assigns them, and stringResource
+    // cannot run inside a non-composable lambda.
+    val addedNotice = stringResource(R.string.added)
+    val alreadyInPlaylistNotice = stringResource(R.string.already_in_playlist)
+
     /**
      * Applies a field value: suggestions follow typing, and
      * clearing the field empties the search at once, with no
@@ -198,12 +206,12 @@ fun SearchScreen(
         TextField(
             value = queryField,
             onValueChange = { applyQueryField(it) },
-            placeholder = { Text("Search songs") },
+            placeholder = { Text(stringResource(R.string.search_hint)) },
             leadingIcon = {
                 IconButton(onClick = { submitSearch(queryField.text) }) {
                     Icon(
                         imageVector = MusiqueIcons.Search,
-                        contentDescription = "Search",
+                        contentDescription = stringResource(R.string.search_action),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -213,7 +221,7 @@ fun SearchScreen(
                     IconButton(onClick = { applyQueryField(TextFieldValue("")) }) {
                         Icon(
                             imageVector = MusiqueIcons.Clear,
-                            contentDescription = "Clear search",
+                            contentDescription = stringResource(R.string.clear_search),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -322,7 +330,7 @@ fun SearchScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "No songs found for \"${state.query}\".",
+                        text = stringResource(R.string.no_results, state.query),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -335,12 +343,12 @@ fun SearchScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.message)
+                        Text(failureMessage(state.kind, state.apiCode))
                         Spacer(modifier = Modifier.height(16.dp))
                         IconButton(onClick = { viewModel.retry() }) {
                             Icon(
                                 imageVector = MusiqueIcons.Refresh,
-                                contentDescription = "Retry search",
+                                contentDescription = stringResource(R.string.retry_search),
                                 tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
@@ -426,7 +434,7 @@ fun SearchScreen(
                                         IconButton(onClick = { chooserTrack = track }) {
                                             Icon(
                                                 imageVector = MusiqueIcons.Add,
-                                                contentDescription = "Add to playlist",
+                                                contentDescription = stringResource(R.string.add_to_playlist),
                                                 tint = MaterialTheme.colorScheme.onSurface,
                                             )
                                         }
@@ -444,7 +452,7 @@ fun SearchScreen(
                                         IconButton(onClick = { chooserTrack = listRow.track }) {
                                             Icon(
                                                 imageVector = MusiqueIcons.Add,
-                                                contentDescription = "Add to playlist",
+                                                contentDescription = stringResource(R.string.add_to_playlist),
                                                 tint = MaterialTheme.colorScheme.onSurface,
                                             )
                                         }
@@ -499,7 +507,7 @@ fun SearchScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = errorState.message,
+                    text = playerErrorMessage(errorState.failure),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.weight(1f),
@@ -508,7 +516,7 @@ fun SearchScreen(
                 IconButton(onClick = { viewModel.retryPlayback() }) {
                     Icon(
                         imageVector = MusiqueIcons.Refresh,
-                        contentDescription = "Retry playback",
+                        contentDescription = stringResource(R.string.retry_playback),
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -571,7 +579,7 @@ fun SearchScreen(
                     .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
             ) {
                 Text(
-                    text = "Add to playlist",
+                    text = stringResource(R.string.add_to_playlist),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 8.dp),
@@ -584,7 +592,7 @@ fun SearchScreen(
                                 val added = viewModel.addTrackToPlaylist(playlist.id, pending)
                                 chooserTrack = null
                                 addNoticeDismissJob?.cancel()
-                                addNotice = if (added) "Added" else "Already in playlist"
+                                addNotice = if (added) addedNotice else alreadyInPlaylistNotice
                                 addNoticeDismissJob = noticeScope.launch {
                                     delay(ADD_NOTICE_DURATION_MS)
                                     addNotice = null
@@ -595,7 +603,7 @@ fun SearchScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = playlist.name,
+                                text = playlistDisplayName(playlist),
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                             )

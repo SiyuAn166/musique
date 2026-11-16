@@ -1,5 +1,6 @@
 package com.siyu.musique.ui
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,26 +31,31 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.R
+import com.siyu.musique.data.LanguagePreference
 import com.siyu.musique.data.UpdateFailureKind
 import com.siyu.musique.data.UpdateInstaller
 import com.siyu.musique.ui.theme.MusiqueIcons
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 /**
  * Settings tab: the cache size (audio + covers) with a clear
- * button, the debug log entry, and the manual update check
- * showing the installed version. No title, no back chevron:
- * it is a top-level tab. The size is measured on every entry;
- * clearing re-measures so the freed size shows at once. The
- * shared mini player bar and the tab bar sit below this screen,
- * owned by the app shell.
+ * button, the debug log entry, the manual update check
+ * showing the installed version, and the language choice.
+ * No title, no back chevron: it is a top-level tab. The size
+ * is measured on every entry; clearing re-measures so the
+ * freed size shows at once. The shared mini player bar and
+ * the tab bar sit below this screen, owned by the app shell.
  */
 @Composable
 fun SettingsScreen(
@@ -58,10 +66,15 @@ fun SettingsScreen(
     val cacheSizeBytes by viewModel.cacheSizeBytes.collectAsStateWithLifecycle()
     val clearingCache by viewModel.clearingCache.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val languagePreference by viewModel.languagePreference.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showUpdateDialog by remember { mutableStateOf(false) }
     var needsInstallPermission by remember { mutableStateOf(false) }
+
+    /** Whether the language dropdown menu is open. */
+    var languageMenuExpanded by remember { mutableStateOf(false) }
+    val languageScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.loadCacheSize()
@@ -85,7 +98,7 @@ fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Cache",
+                text = stringResource(R.string.settings_cache),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -101,7 +114,7 @@ fun SettingsScreen(
             ) {
                 Icon(
                     imageVector = MusiqueIcons.Delete,
-                    contentDescription = "Clear cache",
+                    contentDescription = stringResource(R.string.clear_cache),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -120,7 +133,7 @@ fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Debug log",
+                text = stringResource(R.string.settings_debug_log),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -149,7 +162,7 @@ fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Check for updates",
+                text = stringResource(R.string.check_for_updates),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -166,6 +179,77 @@ fun SettingsScreen(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+
+        // Language: the row shows the current choice, and
+        // tapping it opens a dropdown with the four options.
+        // Picking a different one saves it, then recreates the
+        // Activity so the new Activity reads the new value in
+        // attachBaseContext and every string resolves in the
+        // chosen language. The save suspends until it lands; a
+        // failed save leaves the state unchanged and skips the
+        // recreate, so the row never claims a language that
+        // will not survive.
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { languageMenuExpanded = true }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_language),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = languageOptionLabel(languagePreference),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Icon(
+                    imageVector = MusiqueIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(
+                expanded = languageMenuExpanded,
+                onDismissRequest = { languageMenuExpanded = false },
+            ) {
+                LanguagePreference.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(languageOptionLabel(option)) },
+                        onClick = {
+                            languageMenuExpanded = false
+                            if (option != languagePreference) {
+                                languageScope.launch {
+                                    viewModel.setLanguagePreference(option)
+                                    if (viewModel.languagePreference.value == option) {
+                                        (context as? Activity)?.recreate()
+                                    }
+                                }
+                            }
+                        },
+                        leadingIcon = {
+                            if (option == languagePreference) {
+                                Icon(
+                                    imageVector = MusiqueIcons.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -220,7 +304,7 @@ private fun UpdateDialog(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Checking for updates…",
+                            text = stringResource(R.string.checking_for_updates),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -228,7 +312,7 @@ private fun UpdateDialog(
                 }
                 UpdateUiState.UpToDate -> {
                     Text(
-                        text = "You're up to date",
+                        text = stringResource(R.string.up_to_date),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -236,13 +320,13 @@ private fun UpdateDialog(
                 is UpdateUiState.Available -> {
                     Column {
                         Text(
-                            text = "New version ${state.tag} available",
+                            text = stringResource(R.string.update_available, state.tag),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Size ${formatCacheSize(state.apkSize)}",
+                            text = stringResource(R.string.update_size, formatCacheSize(state.apkSize)),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -251,8 +335,9 @@ private fun UpdateDialog(
                 is UpdateUiState.Downloading -> {
                     Column {
                         Text(
-                            text = "Downloading" +
-                                (state.fraction?.let { " ${(it * 100).toInt()}%" } ?: ""),
+                            text = state.fraction?.let { fraction ->
+                                stringResource(R.string.downloading_percent, (fraction * 100).toInt())
+                            } ?: stringResource(R.string.downloading),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -277,14 +362,14 @@ private fun UpdateDialog(
                 is UpdateUiState.ReadyToInstall -> {
                     Column {
                         Text(
-                            text = "Download complete",
+                            text = stringResource(R.string.download_complete),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         if (needsInstallPermission) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Allow installing unknown apps first",
+                                text = stringResource(R.string.allow_unknown_apps),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -306,7 +391,7 @@ private fun UpdateDialog(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = MusiqueIcons.Check,
-                            contentDescription = "Close",
+                            contentDescription = stringResource(R.string.close),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -315,7 +400,7 @@ private fun UpdateDialog(
                     IconButton(onClick = onDownload) {
                         Icon(
                             imageVector = MusiqueIcons.Download,
-                            contentDescription = "Download update",
+                            contentDescription = stringResource(R.string.download_update),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -324,7 +409,7 @@ private fun UpdateDialog(
                     IconButton(onClick = { onInstall(state.apkFile) }) {
                         Icon(
                             imageVector = MusiqueIcons.Check,
-                            contentDescription = "Install update",
+                            contentDescription = stringResource(R.string.install_update),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -333,7 +418,7 @@ private fun UpdateDialog(
                     IconButton(onClick = onRetry) {
                         Icon(
                             imageVector = MusiqueIcons.Refresh,
-                            contentDescription = "Retry",
+                            contentDescription = stringResource(R.string.retry),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -350,7 +435,7 @@ private fun UpdateDialog(
             IconButton(onClick = onDismiss) {
                 Icon(
                     imageVector = MusiqueIcons.Clear,
-                    contentDescription = "Close",
+                    contentDescription = stringResource(R.string.close),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -358,14 +443,28 @@ private fun UpdateDialog(
     )
 }
 
-/** The dialog line for an update failure kind. */
+/** The dialog line for an update failure kind, localized at composition time. */
+@Composable
 private fun updateFailureMessage(kind: UpdateFailureKind): String = when (kind) {
-    UpdateFailureKind.NETWORK -> "Check failed. Check your connection and try again."
-    UpdateFailureKind.RATE_LIMITED -> "Too many requests. Try again later."
-    UpdateFailureKind.PARSE -> "Version info unreadable. Try again later."
-    UpdateFailureKind.MISSING_ASSET -> "No install package found in the latest release."
-    UpdateFailureKind.DOWNLOAD_FAILED -> "Download failed. Try again."
-    UpdateFailureKind.INSTALL_FAILED -> "Install failed. Try again."
+    UpdateFailureKind.NETWORK -> stringResource(R.string.update_error_network)
+    UpdateFailureKind.RATE_LIMITED -> stringResource(R.string.update_error_rate_limited)
+    UpdateFailureKind.PARSE -> stringResource(R.string.update_error_parse)
+    UpdateFailureKind.MISSING_ASSET -> stringResource(R.string.update_error_missing_asset)
+    UpdateFailureKind.DOWNLOAD_FAILED -> stringResource(R.string.update_error_download_failed)
+    UpdateFailureKind.INSTALL_FAILED -> stringResource(R.string.update_error_install_failed)
+}
+
+/**
+ * The label for a language option, in its own language: the
+ * fixed languages name themselves, and the follow-system
+ * option is localized like any other string.
+ */
+@Composable
+private fun languageOptionLabel(preference: LanguagePreference): String = when (preference) {
+    LanguagePreference.SYSTEM -> stringResource(R.string.language_system)
+    LanguagePreference.ENGLISH -> "English"
+    LanguagePreference.CHINESE -> "简体中文"
+    LanguagePreference.FRENCH -> "Français"
 }
 
 /** Human cache size: bytes, KB, or MB with one decimal. */

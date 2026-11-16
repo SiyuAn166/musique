@@ -34,19 +34,36 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.siyu.musique.R
 import com.siyu.musique.core.network.SMALL_COVER_HEIGHT
 import com.siyu.musique.core.network.SMALL_COVER_WIDTH
 import com.siyu.musique.core.network.sizedCoverUrl
 import com.siyu.musique.model.Playlist
 import com.siyu.musique.ui.theme.MusiqueIcons
 
-/** "1 song" / "N songs", shared by the playlist rows and the detail header. */
+/** "1 song" / "N songs", shared by the playlist rows and the detail header. Localized at composition time. */
+@Composable
 internal fun songCountLabel(count: Int): String =
-    if (count == 1) "1 song" else "$count songs"
+    pluralStringResource(R.plurals.song_count, count, count)
+
+/**
+ * The name shown for a playlist. The two built-in playlists
+ * show their localized names; a user playlist shows the name
+ * it was given. The stored names never change: only the
+ * display is localized, keyed on the playlist identity.
+ */
+@Composable
+internal fun playlistDisplayName(playlist: Playlist): String = when {
+    playlist.isDefault -> stringResource(R.string.default_playlist_name)
+    playlist.isDownloads -> stringResource(R.string.downloads_playlist_name)
+    else -> playlist.name
+}
 
 /**
  * Playlists screen: no title, a back icon at the top left and a
@@ -87,7 +104,7 @@ fun PlaylistsScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = MusiqueIcons.ChevronLeft,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.back),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -100,7 +117,7 @@ fun PlaylistsScreen(
             ) {
                 Icon(
                     imageVector = MusiqueIcons.Add,
-                    contentDescription = "Create playlist",
+                    contentDescription = stringResource(R.string.create_playlist),
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(28.dp),
                 )
@@ -121,12 +138,12 @@ fun PlaylistsScreen(
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("New playlist") },
+            title = { Text(stringResource(R.string.new_playlist_title)) },
             text = {
                 TextField(
                     value = newName,
                     onValueChange = { newName = it },
-                    placeholder = { Text("Playlist name") },
+                    placeholder = { Text(stringResource(R.string.playlist_name_hint)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -141,7 +158,7 @@ fun PlaylistsScreen(
                 ) {
                     Icon(
                         imageVector = MusiqueIcons.Check,
-                        contentDescription = "Create",
+                        contentDescription = stringResource(R.string.create),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -150,7 +167,7 @@ fun PlaylistsScreen(
                 IconButton(onClick = { showCreateDialog = false }) {
                     Icon(
                         imageVector = MusiqueIcons.Clear,
-                        contentDescription = "Cancel",
+                        contentDescription = stringResource(R.string.cancel),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -192,7 +209,7 @@ internal fun PlaylistRow(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = playlist.name,
+                    text = playlistDisplayName(playlist),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

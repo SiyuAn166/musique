@@ -21,10 +21,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.R
 import com.siyu.musique.core.logging.MusiqueLog
 import com.siyu.musique.ui.theme.MusiqueIcons
 
@@ -84,7 +87,7 @@ fun LogScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = MusiqueIcons.ChevronLeft,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.back),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -98,21 +101,21 @@ fun LogScreen(
             ) {
                 Icon(
                     imageVector = MusiqueIcons.ContentCopy,
-                    contentDescription = "Copy log",
+                    contentDescription = stringResource(R.string.copy_log),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
             IconButton(onClick = { viewModel.clearLogs() }) {
                 Icon(
                     imageVector = MusiqueIcons.Delete,
-                    contentDescription = "Clear log",
+                    contentDescription = stringResource(R.string.clear_log),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
 
         Text(
-            text = "${lines.size} lines buffered",
+            text = pluralStringResource(R.plurals.lines_buffered, lines.size, lines.size),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -120,7 +123,7 @@ fun LogScreen(
 
         if (lines.isEmpty()) {
             Text(
-                text = "No log lines yet. Search or play something, then come back.",
+                text = stringResource(R.string.no_log_lines),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(16.dp),
             )

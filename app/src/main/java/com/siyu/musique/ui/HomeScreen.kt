@@ -33,7 +33,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.R
 import com.siyu.musique.ui.theme.MusiqueIcons
 import com.siyu.musique.ui.theme.MusiqueScriptFamily
 
@@ -87,7 +89,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "Playlists",
+                        text = stringResource(R.string.playlists_title),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -101,7 +103,7 @@ fun HomeScreen(
                     ) {
                         Icon(
                             imageVector = MusiqueIcons.Add,
-                            contentDescription = "Create playlist",
+                            contentDescription = stringResource(R.string.create_playlist),
                             tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(24.dp),
                         )
@@ -125,12 +127,12 @@ fun HomeScreen(
             onDismissRequest = { showCreatePlaylistDialog = false },
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(36.dp),
-            title = { Text("New playlist") },
+            title = { Text(stringResource(R.string.new_playlist_title)) },
             text = {
                 TextField(
                     value = newPlaylistName,
                     onValueChange = { newPlaylistName = it },
-                    placeholder = { Text("Playlist name") },
+                    placeholder = { Text(stringResource(R.string.playlist_name_hint)) },
                     singleLine = true,
                     shape = RoundedCornerShape(50.dp),
                     colors = TextFieldDefaults.colors(
@@ -157,7 +159,7 @@ fun HomeScreen(
                 ) {
                     Icon(
                         imageVector = MusiqueIcons.Check,
-                        contentDescription = "Create",
+                        contentDescription = stringResource(R.string.create),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -166,7 +168,7 @@ fun HomeScreen(
                 IconButton(onClick = { showCreatePlaylistDialog = false }) {
                     Icon(
                         imageVector = MusiqueIcons.Clear,
-                        contentDescription = "Cancel",
+                        contentDescription = stringResource(R.string.cancel),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }

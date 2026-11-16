@@ -1,5 +1,6 @@
 package com.siyu.musique
 
+import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,6 +23,16 @@ import com.siyu.musique.ui.MusiqueApp
  * log screen.
  */
 class MainActivity : ComponentActivity() {
+    /**
+     * Applies the stored language before anything attaches, so
+     * every resource resolves in the chosen language from the
+     * first frame. Follow-system (or no stored choice) leaves
+     * the base context unchanged.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(BiliDependencies.wrapWithLanguagePreference(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // The app is forced light, so the system bars always use dark
@@ -38,6 +49,8 @@ class MainActivity : ComponentActivity() {
         val appCache = BiliDependencies.createAppCache(applicationContext, audioCache)
         val qualityPreferenceStore =
             BiliDependencies.createQualityPreferenceStore(applicationContext)
+        val languagePreferenceStore =
+            BiliDependencies.createLanguagePreferenceStore(applicationContext)
         val playlistStore = BiliDependencies.createPlaylistStore(applicationContext)
         val playbackModeStore = BiliDependencies.createPlaybackModeStore(applicationContext)
         val playbackStateStore = BiliDependencies.createPlaybackStateStore(applicationContext)
@@ -54,6 +67,7 @@ class MainActivity : ComponentActivity() {
                 playerEngine = playerEngine,
                 appCache = appCache,
                 qualityPreferenceStore = qualityPreferenceStore,
+                languagePreferenceStore = languagePreferenceStore,
                 playlistStore = playlistStore,
                 playbackModeStore = playbackModeStore,
                 playbackStateStore = playbackStateStore,

@@ -56,11 +56,13 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.siyu.musique.R
 import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.LARGE_COVER_HEIGHT
 import com.siyu.musique.core.network.LARGE_COVER_WIDTH
@@ -263,7 +265,7 @@ fun PlayerScreen(
             IconButton(onClick = onClose) {
                 Icon(
                     imageVector = MusiqueIcons.ChevronDown,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.back),
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(28.dp),
                 )
@@ -310,7 +312,7 @@ fun PlayerScreen(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = track?.artist ?: "Select a song from search or playlists",
+            text = track?.artist ?: stringResource(R.string.select_song_empty),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),
@@ -358,7 +360,7 @@ fun PlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = errorState.message,
+                    text = playerErrorMessage(errorState.failure),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.weight(1f),
@@ -366,7 +368,7 @@ fun PlayerScreen(
                 IconButton(onClick = { viewModel.retryPlayback() }) {
                     Icon(
                         imageVector = MusiqueIcons.Refresh,
-                        contentDescription = "Retry playback",
+                        contentDescription = stringResource(R.string.retry_playback),
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -381,7 +383,11 @@ fun PlayerScreen(
         ) {
             ModeButton(
                 icon = MusiqueIcons.Shuffle,
-                contentDescription = if (shuffleEnabled) "Shuffle on" else "Shuffle off",
+                contentDescription = if (shuffleEnabled) {
+                    stringResource(R.string.shuffle_on)
+                } else {
+                    stringResource(R.string.shuffle_off)
+                },
                 active = shuffleEnabled,
                 onClick = { viewModel.toggleShuffle() },
             )
@@ -391,7 +397,7 @@ fun PlayerScreen(
             ) {
                 Icon(
                     imageVector = MusiqueIcons.SkipPrevious,
-                    contentDescription = "Previous",
+                    contentDescription = stringResource(R.string.previous),
                     tint = if (track != null) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -413,7 +419,11 @@ fun PlayerScreen(
                     } else {
                         MusiqueIcons.PlayArrow
                     },
-                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    contentDescription = if (isPlaying) {
+                        stringResource(R.string.pause)
+                    } else {
+                        stringResource(R.string.play)
+                    },
                     tint = if (track != null || queue.isNotEmpty()) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -428,7 +438,7 @@ fun PlayerScreen(
             ) {
                 Icon(
                     imageVector = MusiqueIcons.SkipNext,
-                    contentDescription = "Next",
+                    contentDescription = stringResource(R.string.next),
                     tint = if (track != null) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -444,9 +454,9 @@ fun PlayerScreen(
                     MusiqueIcons.Repeat
                 },
                 contentDescription = when (repeatMode) {
-                    RepeatMode.OFF -> "Repeat off"
-                    RepeatMode.ALL -> "Repeat all"
-                    RepeatMode.ONE -> "Repeat one"
+                    RepeatMode.OFF -> stringResource(R.string.repeat_off)
+                    RepeatMode.ALL -> stringResource(R.string.repeat_all)
+                    RepeatMode.ONE -> stringResource(R.string.repeat_one)
                 },
                 active = repeatMode != RepeatMode.OFF,
                 onClick = { viewModel.cycleRepeatMode() },
@@ -465,7 +475,7 @@ fun PlayerScreen(
             ) {
                 Icon(
                     imageVector = MusiqueIcons.VolumeDown,
-                    contentDescription = "Mute",
+                    contentDescription = stringResource(R.string.mute),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                 )
@@ -482,7 +492,7 @@ fun PlayerScreen(
             ) {
                 Icon(
                     imageVector = MusiqueIcons.VolumeUp,
-                    contentDescription = "Maximum volume",
+                    contentDescription = stringResource(R.string.maximum_volume),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                 )
@@ -499,7 +509,7 @@ fun PlayerScreen(
                 IconButton(onClick = { queueSheetOpen = true }) {
                     Icon(
                         imageVector = MusiqueIcons.QueueMusic,
-                        contentDescription = "Queue",
+                        contentDescription = stringResource(R.string.queue),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(24.dp),
                     )
@@ -529,7 +539,7 @@ fun PlayerScreen(
                         IconButton(onClick = {}, enabled = false) {
                             Icon(
                                 imageVector = MusiqueIcons.Download,
-                                contentDescription = "Download",
+                                contentDescription = stringResource(R.string.download),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                                     alpha = 0.4f,
                                 ),
@@ -541,7 +551,7 @@ fun PlayerScreen(
                         IconButton(onClick = {}) {
                             Icon(
                                 imageVector = MusiqueIcons.Check,
-                                contentDescription = "Downloaded",
+                                contentDescription = stringResource(R.string.downloaded),
                                 tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(24.dp),
                             )
@@ -569,7 +579,7 @@ fun PlayerScreen(
                         IconButton(onClick = { viewModel.downloadTrack(track) }) {
                             Icon(
                                 imageVector = MusiqueIcons.Download,
-                                contentDescription = "Download",
+                                contentDescription = stringResource(R.string.download),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(24.dp),
                             )
@@ -688,7 +698,7 @@ fun PlayerScreen(
                 ) {
                     item {
                         Text(
-                            text = "Queue",
+                            text = stringResource(R.string.queue),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(
@@ -738,9 +748,9 @@ fun PlayerScreen(
                                                     MusiqueIcons.ChevronRight
                                                 },
                                                 contentDescription = if (partsExpanded) {
-                                                    "Collapse parts"
+                                                    stringResource(R.string.collapse_parts)
                                                 } else {
-                                                    "Expand parts"
+                                                    stringResource(R.string.expand_parts)
                                                 },
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )

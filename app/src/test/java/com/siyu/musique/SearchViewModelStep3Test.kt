@@ -12,6 +12,8 @@ import com.siyu.musique.model.Track
 import com.siyu.musique.player.FakePlayerEngine
 import com.siyu.musique.player.PlaybackError
 import com.siyu.musique.ui.PlayerUiState
+import com.siyu.musique.ui.PlaybackFailure
+import com.siyu.musique.ui.SearchErrorKind
 import com.siyu.musique.ui.SearchUiState
 import com.siyu.musique.ui.SearchViewModel
 import kotlin.time.Duration.Companion.seconds
@@ -192,7 +194,10 @@ class SearchViewModelStep3Test {
             vm.play(track(cid = ""))
             advanceUntilIdle()
             val error = vm.playerState.value as PlayerUiState.Error
-            assertTrue(error.message.contains("Network problem"))
+            assertEquals(
+                PlaybackFailure.Resolve(SearchErrorKind.NETWORK),
+                error.failure,
+            )
             assertFalse(vm.isPlaying.value)
             assertEquals(track(cid = ""), vm.currentTrack.value)
             assertTrue(engine.playCalls.isEmpty())
@@ -259,7 +264,7 @@ class SearchViewModelStep3Test {
             advanceUntilIdle()
             assertEquals(1, repository.playUrlCalls)
             val error = vm.playerState.value as PlayerUiState.Error
-            assertTrue(error.message.contains("Decoder failed"))
+            assertEquals(PlaybackFailure.Engine("Decoder failed"), error.failure)
             assertFalse(vm.isPlaying.value)
         }
 

@@ -26,9 +26,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.siyu.musique.R
 import com.siyu.musique.core.network.SMALL_COVER_HEIGHT
 import com.siyu.musique.core.network.SMALL_COVER_WIDTH
 import com.siyu.musique.core.network.sizedCoverUrl
@@ -65,11 +67,11 @@ fun MiniPlayerBar(
     modifier: Modifier = Modifier,
 ) {
     val statusLine = if (track == null) {
-        "Tap to open player"
+        stringResource(R.string.tap_to_open_player)
     } else {
         when (playerState) {
-            PlayerUiState.Fetching, PlayerUiState.Buffering -> "Loading…"
-            is PlayerUiState.Error -> "Playback error"
+            PlayerUiState.Fetching, PlayerUiState.Buffering -> stringResource(R.string.loading)
+            is PlayerUiState.Error -> stringResource(R.string.playback_error)
             else -> if (progress.durationMs > 0) {
                 val shownPositionMs =
                     minOf(progress.positionMs, progress.durationMs).coerceAtLeast(0L)
@@ -174,7 +176,7 @@ fun MiniPlayerBar(
                     IconButton(onClick = onRetry) {
                         Icon(
                             imageVector = MusiqueIcons.Refresh,
-                            contentDescription = "Retry playback",
+                            contentDescription = stringResource(R.string.retry_playback),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -190,7 +192,7 @@ fun MiniPlayerBar(
                     ) {
                         Icon(
                             imageVector = MusiqueIcons.SkipPrevious,
-                            contentDescription = "Previous",
+                            contentDescription = stringResource(R.string.previous),
                             tint = controlTint,
                             modifier = Modifier.size(24.dp),
                         )
@@ -205,7 +207,11 @@ fun MiniPlayerBar(
                             } else {
                                 MusiqueIcons.PlayArrow
                             },
-                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            contentDescription = if (isPlaying) {
+                                stringResource(R.string.pause)
+                            } else {
+                                stringResource(R.string.play)
+                            },
                             tint = controlTint,
                             modifier = Modifier.size(28.dp),
                         )
@@ -216,7 +222,7 @@ fun MiniPlayerBar(
                     ) {
                         Icon(
                             imageVector = MusiqueIcons.SkipNext,
-                            contentDescription = "Next",
+                            contentDescription = stringResource(R.string.next),
                             tint = controlTint,
                             modifier = Modifier.size(24.dp),
                         )

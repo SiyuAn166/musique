@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Musique</string>
+
+    <!-- Shared -->
+    <string name="back">返回</string>
+    <string name="cancel">取消</string>
+    <string name="create">创建</string>
+    <string name="rename">重命名</string>
+    <string name="close">关闭</string>
+    <string name="retry">重试</string>
+
+    <!-- Bottom tabs -->
+    <string name="tab_home">首页</string>
+    <string name="tab_search">搜索</string>
+    <string name="tab_settings">设置</string>
+
+    <!-- Home and playlists -->
+    <string name="playlists_title">歌单</string>
+    <string name="create_playlist">新建歌单</string>
+    <string name="new_playlist_title">新建歌单</string>
+    <string name="playlist_name_hint">歌单名称</string>
+    <string name="default_playlist_name">默认歌单</string>
+    <string name="downloads_playlist_name">下载</string>
+    <string name="rename_playlist">重命名歌单</string>
+    <string name="delete_playlist">删除歌单</string>
+    <string name="remove_selected">移除所选歌曲</string>
+    <string name="done_selecting">完成选择</string>
+    <string name="select_songs">选择歌曲</string>
+    <string name="playlist_not_found">找不到该歌单。</string>
+    <string name="empty_playlist">还没有歌曲。从搜索中添加吧。</string>
+
+    <!-- Search -->
+    <string name="search_hint">搜索歌曲</string>
+    <string name="search_action">搜索</string>
+    <string name="clear_search">清除搜索</string>
+    <string name="no_results">没有找到“%1$s”相关的歌曲。</string>
+    <string name="retry_search">重新搜索</string>
+    <string name="add_to_playlist">添加到歌单</string>
+    <string name="added">已添加</string>
+    <string name="already_in_playlist">已在歌单中</string>
+
+    <!-- Player -->
+    <string name="select_song_empty">从搜索或歌单中选择一首歌</string>
+    <string name="shuffle_on">随机播放已开启</string>
+    <string name="shuffle_off">随机播放已关闭</string>
+    <string name="previous">上一首</string>
+    <string name="pause">暂停</string>
+    <string name="play">播放</string>
+    <string name="next">下一首</string>
+    <string name="repeat_off">循环播放已关闭</string>
+    <string name="repeat_all">列表循环</string>
+    <string name="repeat_one">单曲循环</string>
+    <string name="mute">静音</string>
+    <string name="maximum_volume">最大音量</string>
+    <string name="queue">播放队列</string>
+    <string name="download">下载</string>
+    <string name="downloaded">已下载</string>
+    <string name="collapse_parts">收起分P</string>
+    <string name="expand_parts">展开分P</string>
+    <string name="retry_playback">重新播放</string>
+    <string name="playback_error">播放出错</string>
+
+    <!-- Mini player bar -->
+    <string name="tap_to_open_player">点按打开播放器</string>
+    <string name="loading">加载中…</string>
+
+    <!-- Debug log -->
+    <string name="copy_log">复制日志</string>
+    <string name="clear_log">清除日志</string>
+    <string name="no_log_lines">暂无日志。先搜索或播放点什么，再回来看看吧。</string>
+
+    <!-- Settings -->
+    <string name="settings_cache">缓存</string>
+    <string name="clear_cache">清除缓存</string>
+    <string name="settings_debug_log">调试日志</string>
+    <string name="check_for_updates">检查更新</string>
+    <string name="settings_language">语言</string>
+    <string name="language_system">跟随系统</string>
+
+    <!-- Update dialog -->
+    <string name="checking_for_updates">正在检查更新…</string>
+    <string name="up_to_date">已是最新版本</string>
+    <string name="update_available">新版本 %1$s 可用</string>
+    <string name="update_size">大小 %1$s</string>
+    <string name="downloading">正在下载</string>
+    <string name="downloading_percent">正在下载 %1$d%%</string>
+    <string name="download_complete">下载完成</string>
+    <string name="allow_unknown_apps">请先允许安装未知应用</string>
+    <string name="download_update">下载更新</string>
+    <string name="install_update">安装更新</string>
+    <string name="update_error_network">检查失败。请检查网络连接，然后重试。</string>
+    <string name="update_error_rate_limited">请求过于频繁。请稍后再试。</string>
+    <string name="update_error_parse">版本信息无法读取。请稍后再试。</string>
+    <string name="update_error_missing_asset">最新版本中没有找到安装包。</string>
+    <string name="update_error_download_failed">下载失败。请重试。</string>
+    <string name="update_error_install_failed">安装失败。请重试。</string>
+
+    <!-- Search and playback failures -->
+    <string name="error_network">网络问题。请检查网络连接，然后重试。</string>
+    <string name="error_blocked">请求被拦截，请稍后再试。</string>
+    <string name="error_rate_limited">请求过于频繁，请稍后再试。</string>
+    <string name="error_parse">Bilibili 更改了数据格式。请稍后再试。</string>
+    <string name="error_api_code">Bilibili 返回了错误（代码 %1$d）。请重试。</string>
+    <string name="error_unknown">出了点问题。请重试。</string>
+    <string name="error_playback_failed">播放失败：%1$s</string>
+
+    <plurals name="song_count">
+        <item quantity="other">%1$d 首歌</item>
+    </plurals>
+    <plurals name="lines_buffered">
+        <item quantity="other">已缓存 %1$d 行</item>
+    </plurals>
+</resources>

@@ -8,6 +8,7 @@ import com.siyu.musique.data.FakeSearchRepository
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.model.Track
 import com.siyu.musique.ui.PlayerUiState
+import com.siyu.musique.ui.PlaybackFailure
 import com.siyu.musique.ui.SearchErrorKind
 import com.siyu.musique.ui.SearchUiState
 import com.siyu.musique.ui.SearchViewModel
@@ -22,6 +23,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -92,7 +94,7 @@ class SearchViewModelStep1Test {
         advanceUntilIdle()
         val state = viewModel.searchState.value as SearchUiState.Error
         assertEquals(SearchErrorKind.NETWORK, state.kind)
-        assertTrue(state.message.contains("Network problem"))
+        assertNull(state.apiCode)
         assertEquals("test", state.query)
     }
 
@@ -105,7 +107,7 @@ class SearchViewModelStep1Test {
         advanceUntilIdle()
         val state = viewModel.searchState.value as SearchUiState.Error
         assertEquals(SearchErrorKind.BLOCKED, state.kind)
-        assertEquals("Request blocked, try again shortly.", state.message)
+        assertNull(state.apiCode)
     }
 
     @Test
@@ -139,7 +141,7 @@ class SearchViewModelStep1Test {
         advanceUntilIdle()
         val state = viewModel.searchState.value as SearchUiState.Error
         assertEquals(SearchErrorKind.API, state.kind)
-        assertTrue(state.message.contains("-101"))
+        assertEquals(-101, state.apiCode)
     }
 
     @Test
@@ -234,6 +236,9 @@ class SearchViewModelStep1Test {
             assertEquals(track, viewModel.currentTrack.value)
             assertFalse(viewModel.isPlaying.value)
             val error = viewModel.playerState.value as PlayerUiState.Error
-            assertTrue(error.message.contains("Network problem"))
+            assertEquals(
+                PlaybackFailure.Resolve(SearchErrorKind.NETWORK),
+                error.failure,
+            )
         }
 }

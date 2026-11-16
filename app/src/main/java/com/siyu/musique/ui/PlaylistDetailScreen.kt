@@ -33,8 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.siyu.musique.R
 import com.siyu.musique.model.Track
 import com.siyu.musique.ui.theme.MusiqueIcons
 
@@ -133,7 +135,7 @@ fun PlaylistDetailScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = MusiqueIcons.ChevronLeft,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.back),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -148,9 +150,9 @@ fun PlaylistDetailScreen(
                     Icon(
                         imageVector = MusiqueIcons.PlaylistAddCheck,
                         contentDescription = if (selecting) {
-                            "Done selecting"
+                            stringResource(R.string.done_selecting)
                         } else {
-                            "Select songs"
+                            stringResource(R.string.select_songs)
                         },
                         tint = if (selecting) {
                             MaterialTheme.colorScheme.onSurface
@@ -169,7 +171,7 @@ fun PlaylistDetailScreen(
                 ) {
                     Icon(
                         imageVector = MusiqueIcons.Edit,
-                        contentDescription = "Rename playlist",
+                        contentDescription = stringResource(R.string.rename_playlist),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -181,7 +183,7 @@ fun PlaylistDetailScreen(
                 ) {
                     Icon(
                         imageVector = MusiqueIcons.Delete,
-                        contentDescription = "Delete playlist",
+                        contentDescription = stringResource(R.string.delete_playlist),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -205,7 +207,7 @@ fun PlaylistDetailScreen(
                 ) {
                     Icon(
                         imageVector = MusiqueIcons.Delete,
-                        contentDescription = "Remove selected songs",
+                        contentDescription = stringResource(R.string.remove_selected),
                         tint = if (selectedKeys.isNotEmpty()) {
                             MaterialTheme.colorScheme.onSurface
                         } else {
@@ -224,7 +226,7 @@ fun PlaylistDetailScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "Playlist not found.",
+                    text = stringResource(R.string.playlist_not_found),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -237,7 +239,7 @@ fun PlaylistDetailScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "No songs yet. Add songs from search.",
+                        text = stringResource(R.string.empty_playlist),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -386,12 +388,12 @@ fun PlaylistDetailScreen(
             onDismissRequest = { showRenameDialog = false },
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(36.dp),
-            title = { Text("Rename playlist") },
+            title = { Text(stringResource(R.string.rename_playlist)) },
             text = {
                 TextField(
                     value = renameName,
                     onValueChange = { renameName = it },
-                    placeholder = { Text("Playlist name") },
+                    placeholder = { Text(stringResource(R.string.playlist_name_hint)) },
                     singleLine = true,
                     shape = RoundedCornerShape(50.dp),
                     colors = TextFieldDefaults.colors(
@@ -418,7 +420,7 @@ fun PlaylistDetailScreen(
                 ) {
                     Icon(
                         imageVector = MusiqueIcons.Check,
-                        contentDescription = "Rename",
+                        contentDescription = stringResource(R.string.rename),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -427,7 +429,7 @@ fun PlaylistDetailScreen(
                 IconButton(onClick = { showRenameDialog = false }) {
                     Icon(
                         imageVector = MusiqueIcons.Clear,
-                        contentDescription = "Cancel",
+                        contentDescription = stringResource(R.string.cancel),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }

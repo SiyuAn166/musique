@@ -2,10 +2,13 @@ package com.siyu.musique.data
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.media3.datasource.cache.SimpleCache
 import java.io.File
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import com.siyu.musique.core.network.ApiService
 import com.siyu.musique.core.network.BiliBootstrap
 import com.siyu.musique.core.network.BiliClient
@@ -25,6 +28,9 @@ import com.siyu.musique.player.PlayerHolder
  * and for the ExoPlayer cache.
  */
 object BiliDependencies {
+
+    /** How long attachBaseContext waits for the stored language before falling back to the system locale. */
+    private const val LOCALE_READ_TIMEOUT_MS: Long = 1000L
 
     /** The shared audio cache, from the holder that also owns the player. Hand the same instance to the engine and to the app cache, so the settings size is what playback stored. */
     fun createAudioCache(context: Context): SimpleCache =
@@ -51,6 +57,33 @@ object BiliDependencies {
     /** The persisted audio quality preference, read by the ViewModel at startup. */
     fun createQualityPreferenceStore(context: Context): QualityPreferenceStore =
         DataStoreQualityPreferenceStore(context.applicationContext)
+
+    /** The persisted language preference, read by the ViewModel at startup and by the Activity before it attaches. */
+    fun createLanguagePreferenceStore(context: Context): LanguagePreferenceStore =
+        DataStoreLanguagePreferenceStore(context.applicationContext)
+
+    /**
+     * The context with the stored language applied, for the
+     * Activity's attachBaseContext: the Activity's resources
+     * resolve in the chosen language. The stored preference is
+     * read synchronously (DataStore's first read); any failure,
+     * a timeout, or a missing value falls back to the system
+     * locale, returning the base context unchanged. A fixed
+     * language wraps the context with a configuration carrying
+     * that locale; follow-system returns the context as-is.
+     */
+    fun wrapWithLanguagePreference(context: Context): Context {
+        val store = createLanguagePreferenceStore(context)
+        val preference = runBlocking {
+            withTimeoutOrNull(LOCALE_READ_TIMEOUT_MS) {
+                runCatching { store.load() }.getOrNull()
+            }
+        } ?: LanguagePreference.SYSTEM
+        val locale = localeForPreference(preference) ?: return context
+        val config = Configuration(context.resources.configuration)
+        config.setLocale(locale)
+        return context.createConfigurationContext(config)
+    }
 
     /** The persisted playlist list, read by the ViewModel at startup. */
     fun createPlaylistStore(context: Context): PlaylistStore =

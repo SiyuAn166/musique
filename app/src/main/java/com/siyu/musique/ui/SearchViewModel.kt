@@ -21,6 +21,7 @@ import com.siyu.musique.data.InMemoryPlaybackModeStore
 import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
+import com.siyu.musique.data.InMemoryLanguagePreferenceStore
 import com.siyu.musique.data.NoOpAudioFileDownloader
 import com.siyu.musique.data.NoOpUpdateApkInstaller
 import com.siyu.musique.data.NoOpUpdateChecker
@@ -39,6 +40,8 @@ import com.siyu.musique.data.PlaybackStateStore
 import com.siyu.musique.data.PlaylistStore
 import com.siyu.musique.data.SavedPlayback
 import com.siyu.musique.data.QualityPreferenceStore
+import com.siyu.musique.data.LanguagePreference
+import com.siyu.musique.data.LanguagePreferenceStore
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.data.describeError
 import com.siyu.musique.model.Playlist
@@ -100,8 +103,19 @@ sealed interface SearchUiState {
     ) : SearchUiState
 
     data class Empty(val query: String) : SearchUiState
-    data class Error(val message: String, val kind: SearchErrorKind, val query: String) :
-        SearchUiState
+
+    /**
+     * The search failed. [kind] names the failure and [apiCode]
+     * carries the Bilibili business error code when [kind] is
+     * [SearchErrorKind.API] and one was reported; the UI renders
+     * the localized message from those, never from a string
+     * built here, so the message follows the app language.
+     */
+    data class Error(
+        val kind: SearchErrorKind,
+        val query: String,
+        val apiCode: Int? = null,
+    ) : SearchUiState
 }
 
 /** Playback states, per the v0.1 design. Fetching and buffering both show a loading state so a tap never looks dead. */
@@ -121,8 +135,23 @@ sealed interface PlayerUiState {
     /** Paused, current item kept. */
     data object Paused : PlayerUiState
 
-    /** Playback failed; the UI shows [message] with a Retry button. */
-    data class Error(val message: String) : PlayerUiState
+    /** Playback failed; the UI shows the localized message for [failure] with a Retry button. */
+    data class Error(val failure: PlaybackFailure) : PlayerUiState
+}
+
+/**
+ * Why playback failed. [Resolve] is a failure while resolving
+ * the track's details or play URL, named by its
+ * [SearchErrorKind] with the Bilibili business error code when
+ * one was reported. [Engine] is a failure the player engine
+ * reported after the URL was handed to it, carrying the
+ * engine's detail for the message. The UI renders the localized
+ * message from the failure, never from a string built in the
+ * ViewModel, so the message follows the app language.
+ */
+sealed interface PlaybackFailure {
+    data class Resolve(val kind: SearchErrorKind, val apiCode: Int? = null) : PlaybackFailure
+    data class Engine(val detail: String) : PlaybackFailure
 }
 
 /**
@@ -239,6 +268,7 @@ class SearchViewModel(
     /** The installed version name, shown on the settings update row. Empty when unwired (tests). */
     val installedVersionName: String = "",
     private val updatesDir: File = defaultUpdatesDir(),
+    private val languagePreferenceStore: LanguagePreferenceStore = InMemoryLanguagePreferenceStore(),
 ) : ViewModel(), PlaybackControls {
 
     private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -262,6 +292,10 @@ class SearchViewModel(
 
     private val _qualityPreference = MutableStateFlow(AudioQuality.BEST)
     val qualityPreference: StateFlow<AudioQuality> = _qualityPreference.asStateFlow()
+
+    /** The chosen app language; SYSTEM means the phone's language. The settings row shows this choice. */
+    private val _languagePreference = MutableStateFlow(LanguagePreference.SYSTEM)
+    val languagePreference: StateFlow<LanguagePreference> = _languagePreference.asStateFlow()
 
     /** Label of the resolved stream for the current track ("192K", "Hi-Res"), null before resolve. */
     private val _resolvedQualityLabel = MutableStateFlow<String?>(null)
@@ -526,6 +560,13 @@ class SearchViewModel(
                 }
         }
         viewModelScope.launch {
+            runCatching { languagePreferenceStore.load() }
+                .onSuccess { stored -> stored?.let { _languagePreference.value = it } }
+                .onFailure {
+                    logger.w(TAG, "language preference load failed (${it::class.simpleName})")
+                }
+        }
+        viewModelScope.launch {
             runCatching { playbackModeStore.load() }
                 .onSuccess { stored ->
                     stored?.let {
@@ -694,7 +735,7 @@ class SearchViewModel(
                 } else {
                     engineHasMedia = false
                     _playerState.value =
-                        PlayerUiState.Error("Playback failed: ${error.message}")
+                        PlayerUiState.Error(PlaybackFailure.Engine(error.message))
                     _isPlaying.value = false
                 }
             }
@@ -1231,6 +1272,27 @@ class SearchViewModel(
                 "positionMs=$position quality=${preference.label}",
         )
         playAt(track, startPositionMs = position, resumePlaying = wasPlaying)
+    }
+
+    /**
+     * Applies the chosen app language: updates the state and
+     * persists the choice, suspending until the save lands so
+     * the caller can recreate the Activity right after and the
+     * new Activity reads the new value in attachBaseContext.
+     * A save failure leaves the state unchanged and logs a
+     * warning, so the settings row never claims a language
+     * that will not survive the recreate.
+     */
+    suspend fun setLanguagePreference(preference: LanguagePreference) {
+        if (_languagePreference.value == preference) return
+        runCatching { languagePreferenceStore.save(preference) }
+            .onSuccess {
+                logger.i(TAG, "language preference changed to ${preference.name}")
+                _languagePreference.value = preference
+            }
+            .onFailure {
+                logger.w(TAG, "language preference save failed (${it::class.simpleName})")
+            }
     }
 
     fun togglePlayPause() {
@@ -2160,31 +2222,31 @@ private fun List<Track>.deduplicatedByKey(): List<Track> {
     return kept
 }
 
-/** The failure message and kind for an exception, shared by search and player errors. */
-private fun describeFailure(error: Throwable): Pair<String, SearchErrorKind> = when (error) {
-    is BiliNetworkException -> "Network problem. Check your connection and try again." to
-        SearchErrorKind.NETWORK
+/** The failure kind and Bilibili business error code (when one was reported) for an exception, shared by search and player errors. The UI renders the localized message from the pair. */
+private fun describeFailure(error: Throwable): Pair<SearchErrorKind, Int?> = when (error) {
+    is BiliNetworkException -> SearchErrorKind.NETWORK to null
     is BiliApiException -> when (error.code) {
-        -352, -412 -> "Request blocked, try again shortly." to SearchErrorKind.BLOCKED
-        -799 -> "Too many requests, try again shortly." to SearchErrorKind.RATE_LIMITED
-        else -> "Bilibili returned an error (code ${error.code}). Try again." to
-            SearchErrorKind.API
+        -352, -412 -> SearchErrorKind.BLOCKED to null
+        -799 -> SearchErrorKind.RATE_LIMITED to null
+        else -> SearchErrorKind.API to error.code
     }
-    is BiliParseException -> "Bilibili changed its data format. Please try again later." to
-        SearchErrorKind.PARSE
-    else -> "Something went wrong. Try again." to SearchErrorKind.API
+    is BiliParseException -> SearchErrorKind.PARSE to null
+    else -> SearchErrorKind.API to null
 }
 
 /** Maps a search failure onto the distinct error state the UI shows. */
 fun mapSearchError(error: Throwable, query: String): SearchUiState.Error {
-    val (message, kind) = describeFailure(error)
-    return SearchUiState.Error(message = message, kind = kind, query = query)
+    val (kind, apiCode) = describeFailure(error)
+    return SearchUiState.Error(kind = kind, query = query, apiCode = apiCode)
 }
 
-/** Maps a playback failure (detail or play URL resolution) onto the message the player error state shows. */
-fun mapPlayerError(error: Throwable): String = describeFailure(error).first
+/** Maps a playback failure (detail or play URL resolution) onto the typed failure the player error state carries. */
+fun mapPlayerError(error: Throwable): PlaybackFailure {
+    val (kind, apiCode) = describeFailure(error)
+    return PlaybackFailure.Resolve(kind, apiCode)
+}
 
-/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, the update checker, installer, and updates dir, and the quality, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, the update checker, installer, and updates dir, and the quality, language, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
@@ -2200,6 +2262,7 @@ class SearchViewModelFactory(
     private val updateApkInstaller: UpdateApkInstaller = NoOpUpdateApkInstaller,
     private val installedVersionName: String = "",
     private val updatesDir: File = defaultUpdatesDir(),
+    private val languagePreferenceStore: LanguagePreferenceStore = InMemoryLanguagePreferenceStore(),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -2222,6 +2285,7 @@ class SearchViewModelFactory(
             updateApkInstaller = updateApkInstaller,
             installedVersionName = installedVersionName,
             updatesDir = updatesDir,
+            languagePreferenceStore = languagePreferenceStore,
         ) as T
     }
 }

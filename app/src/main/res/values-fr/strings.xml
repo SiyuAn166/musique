@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Musique</string>
+
+    <!-- Shared -->
+    <string name="back">Retour</string>
+    <string name="cancel">Annuler</string>
+    <string name="create">Créer</string>
+    <string name="rename">Renommer</string>
+    <string name="close">Fermer</string>
+    <string name="retry">Réessayer</string>
+
+    <!-- Bottom tabs -->
+    <string name="tab_home">Accueil</string>
+    <string name="tab_search">Recherche</string>
+    <string name="tab_settings">Paramètres</string>
+
+    <!-- Home and playlists -->
+    <string name="playlists_title">Playlists</string>
+    <string name="create_playlist">Créer une playlist</string>
+    <string name="new_playlist_title">Nouvelle playlist</string>
+    <string name="playlist_name_hint">Nom de la playlist</string>
+    <string name="default_playlist_name">Playlist par défaut</string>
+    <string name="downloads_playlist_name">Téléchargements</string>
+    <string name="rename_playlist">Renommer la playlist</string>
+    <string name="delete_playlist">Supprimer la playlist</string>
+    <string name="remove_selected">Supprimer les chansons sélectionnées</string>
+    <string name="done_selecting">Sélection terminée</string>
+    <string name="select_songs">Sélectionner des chansons</string>
+    <string name="playlist_not_found">Playlist introuvable.</string>
+    <string name="empty_playlist">Aucune chanson pour l’instant. Ajoutez-en depuis la recherche.</string>
+
+    <!-- Search -->
+    <string name="search_hint">Rechercher des chansons</string>
+    <string name="search_action">Rechercher</string>
+    <string name="clear_search">Effacer la recherche</string>
+    <string name="no_results">Aucune chanson trouvée pour « %1$s ».</string>
+    <string name="retry_search">Relancer la recherche</string>
+    <string name="add_to_playlist">Ajouter à la playlist</string>
+    <string name="added">Ajouté</string>
+    <string name="already_in_playlist">Déjà dans la playlist</string>
+
+    <!-- Player -->
+    <string name="select_song_empty">Choisissez une chanson dans la recherche ou les playlists</string>
+    <string name="shuffle_on">Lecture aléatoire activée</string>
+    <string name="shuffle_off">Lecture aléatoire désactivée</string>
+    <string name="previous">Précédent</string>
+    <string name="pause">Pause</string>
+    <string name="play">Lecture</string>
+    <string name="next">Suivant</string>
+    <string name="repeat_off">Répétition désactivée</string>
+    <string name="repeat_all">Répéter toute la liste</string>
+    <string name="repeat_one">Répéter le titre en cours</string>
+    <string name="mute">Muet</string>
+    <string name="maximum_volume">Volume maximal</string>
+    <string name="queue">File d’attente</string>
+    <string name="download">Télécharger</string>
+    <string name="downloaded">Téléchargé</string>
+    <string name="collapse_parts">Réduire les parties</string>
+    <string name="expand_parts">Développer les parties</string>
+    <string name="retry_playback">Relancer la lecture</string>
+    <string name="playback_error">Erreur de lecture</string>
+
+    <!-- Mini player bar -->
+    <string name="tap_to_open_player">Touchez pour ouvrir le lecteur</string>
+    <string name="loading">Chargement…</string>
+
+    <!-- Debug log -->
+    <string name="copy_log">Copier le journal</string>
+    <string name="clear_log">Effacer le journal</string>
+    <string name="no_log_lines">Aucune ligne de journal pour l’instant. Recherchez ou écoutez quelque chose, puis revenez.</string>
+
+    <!-- Settings -->
+    <string name="settings_cache">Cache</string>
+    <string name="clear_cache">Vider le cache</string>
+    <string name="settings_debug_log">Journal de débogage</string>
+    <string name="check_for_updates">Vérifier les mises à jour</string>
+    <string name="settings_language">Langue</string>
+    <string name="language_system">Langue du système</string>
+
+    <!-- Update dialog -->
+    <string name="checking_for_updates">Vérification des mises à jour…</string>
+    <string name="up_to_date">Vous êtes à jour</string>
+    <string name="update_available">Nouvelle version %1$s disponible</string>
+    <string name="update_size">Taille : %1$s</string>
+    <string name="downloading">Téléchargement</string>
+    <string name="downloading_percent">Téléchargement %1$d %%</string>
+    <string name="download_complete">Téléchargement terminé</string>
+    <string name="allow_unknown_apps">Autorisez d’abord l’installation d’applications inconnues</string>
+    <string name="download_update">Télécharger la mise à jour</string>
+    <string name="install_update">Installer la mise à jour</string>
+    <string name="update_error_network">La vérification a échoué. Vérifiez votre connexion et réessayez.</string>
+    <string name="update_error_rate_limited">Trop de requêtes. Réessayez plus tard.</string>
+    <string name="update_error_parse">Informations de version illisibles. Réessayez plus tard.</string>
+    <string name="update_error_missing_asset">Aucun package d’installation trouvé dans la dernière version.</string>
+    <string name="update_error_download_failed">Le téléchargement a échoué. Réessayez.</string>
+    <string name="update_error_install_failed">L’installation a échoué. Réessayez.</string>
+
+    <!-- Search and playback failures -->
+    <string name="error_network">Problème réseau. Vérifiez votre connexion et réessayez.</string>
+    <string name="error_blocked">Requête bloquée, réessayez bientôt.</string>
+    <string name="error_rate_limited">Trop de requêtes, réessayez bientôt.</string>
+    <string name="error_parse">Bilibili a changé son format de données. Veuillez réessayer plus tard.</string>
+    <string name="error_api_code">Bilibili a renvoyé une erreur (code %1$d). Réessayez.</string>
+    <string name="error_unknown">Une erreur est survenue. Réessayez.</string>
+    <string name="error_playback_failed">Échec de la lecture : %1$s</string>
+
+    <plurals name="song_count">
+        <item quantity="one">%1$d chanson</item>
+        <item quantity="other">%1$d chansons</item>
+    </plurals>
+    <plurals name="lines_buffered">
+        <item quantity="one">%1$d ligne en mémoire</item>
+        <item quantity="other">%1$d lignes en mémoire</item>
+    </plurals>
+</resources>

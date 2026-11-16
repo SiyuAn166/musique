@@ -1,4 +1,116 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Musique</string>
+
+    <!-- Shared -->
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="create">Create</string>
+    <string name="rename">Rename</string>
+    <string name="close">Close</string>
+    <string name="retry">Retry</string>
+
+    <!-- Bottom tabs -->
+    <string name="tab_home">Home</string>
+    <string name="tab_search">Search</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Home and playlists -->
+    <string name="playlists_title">Playlists</string>
+    <string name="create_playlist">Create playlist</string>
+    <string name="new_playlist_title">New playlist</string>
+    <string name="playlist_name_hint">Playlist name</string>
+    <string name="default_playlist_name">Default Playlist</string>
+    <string name="downloads_playlist_name">Downloads</string>
+    <string name="rename_playlist">Rename playlist</string>
+    <string name="delete_playlist">Delete playlist</string>
+    <string name="remove_selected">Remove selected songs</string>
+    <string name="done_selecting">Done selecting</string>
+    <string name="select_songs">Select songs</string>
+    <string name="playlist_not_found">Playlist not found.</string>
+    <string name="empty_playlist">No songs yet. Add songs from search.</string>
+
+    <!-- Search -->
+    <string name="search_hint">Search songs</string>
+    <string name="search_action">Search</string>
+    <string name="clear_search">Clear search</string>
+    <string name="no_results">No songs found for "%1$s".</string>
+    <string name="retry_search">Retry search</string>
+    <string name="add_to_playlist">Add to playlist</string>
+    <string name="added">Added</string>
+    <string name="already_in_playlist">Already in playlist</string>
+
+    <!-- Player -->
+    <string name="select_song_empty">Select a song from search or playlists</string>
+    <string name="shuffle_on">Shuffle on</string>
+    <string name="shuffle_off">Shuffle off</string>
+    <string name="previous">Previous</string>
+    <string name="pause">Pause</string>
+    <string name="play">Play</string>
+    <string name="next">Next</string>
+    <string name="repeat_off">Repeat off</string>
+    <string name="repeat_all">Repeat all</string>
+    <string name="repeat_one">Repeat one</string>
+    <string name="mute">Mute</string>
+    <string name="maximum_volume">Maximum volume</string>
+    <string name="queue">Queue</string>
+    <string name="download">Download</string>
+    <string name="downloaded">Downloaded</string>
+    <string name="collapse_parts">Collapse parts</string>
+    <string name="expand_parts">Expand parts</string>
+    <string name="retry_playback">Retry playback</string>
+    <string name="playback_error">Playback error</string>
+
+    <!-- Mini player bar -->
+    <string name="tap_to_open_player">Tap to open player</string>
+    <string name="loading">Loading…</string>
+
+    <!-- Debug log -->
+    <string name="copy_log">Copy log</string>
+    <string name="clear_log">Clear log</string>
+    <string name="no_log_lines">No log lines yet. Search or play something, then come back.</string>
+
+    <!-- Settings -->
+    <string name="settings_cache">Cache</string>
+    <string name="clear_cache">Clear cache</string>
+    <string name="settings_debug_log">Debug log</string>
+    <string name="check_for_updates">Check for updates</string>
+    <string name="settings_language">Language</string>
+    <string name="language_system">System default</string>
+
+    <!-- Update dialog -->
+    <string name="checking_for_updates">Checking for updates…</string>
+    <string name="up_to_date">You\'re up to date</string>
+    <string name="update_available">New version %1$s available</string>
+    <string name="update_size">Size %1$s</string>
+    <string name="downloading">Downloading</string>
+    <string name="downloading_percent">Downloading %1$d%%</string>
+    <string name="download_complete">Download complete</string>
+    <string name="allow_unknown_apps">Allow installing unknown apps first</string>
+    <string name="download_update">Download update</string>
+    <string name="install_update">Install update</string>
+    <string name="update_error_network">Check failed. Check your connection and try again.</string>
+    <string name="update_error_rate_limited">Too many requests. Try again later.</string>
+    <string name="update_error_parse">Version info unreadable. Try again later.</string>
+    <string name="update_error_missing_asset">No install package found in the latest release.</string>
+    <string name="update_error_download_failed">Download failed. Try again.</string>
+    <string name="update_error_install_failed">Install failed. Try again.</string>
+
+    <!-- Search and playback failures -->
+    <string name="error_network">Network problem. Check your connection and try again.</string>
+    <string name="error_blocked">Request blocked, try again shortly.</string>
+    <string name="error_rate_limited">Too many requests, try again shortly.</string>
+    <string name="error_parse">Bilibili changed its data format. Please try again later.</string>
+    <string name="error_api_code">Bilibili returned an error (code %1$d). Try again.</string>
+    <string name="error_unknown">Something went wrong. Try again.</string>
+    <string name="error_playback_failed">Playback failed: %1$s</string>
+
+    <plurals name="song_count">
+        <item quantity="one">%1$d song</item>
+        <item quantity="other">%1$d songs</item>
+    </plurals>
+    <plurals name="lines_buffered">
+        <item quantity="one">%1$d line buffered</item>
+        <item quantity="other">%1$d lines buffered</item>
+    </plurals>
 </resources>
