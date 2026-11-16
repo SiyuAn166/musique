@@ -10,11 +10,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,6 +79,9 @@ import kotlinx.coroutines.launch
 
 /** A downward release faster than this dismisses the page even before the drag threshold. */
 private const val DISMISS_FLING_VELOCITY_PX_PER_SECOND: Float = 1000f
+
+/** The cover never takes more than this fraction of the page height, so the rows below it always fit. */
+private const val COVER_MAX_HEIGHT_FRACTION: Float = 0.35f
 
 /**
  * Player page, approved redesign: a centered chevron-down back
@@ -272,34 +275,44 @@ fun PlayerScreen(
             }
         }
         Spacer(modifier = Modifier.height(20.dp))
-        if (track != null && track.cover.isNotEmpty()) {
-            AsyncImage(
-                model = sizedCoverUrl(track.cover, LARGE_COVER_WIDTH, LARGE_COVER_HEIGHT),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .shadow(12.dp, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .shadow(12.dp, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = MusiqueIcons.QueueMusic,
+        // The cover is capped at 35% of the page height (and
+        // never wider than the content width): full-width on
+        // tall phones it is fine, but on shorter phones a
+        // full-width square pushes the queue, download, and
+        // quality row off the bottom. The cap keeps the whole
+        // page fitting on every screen height.
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            val coverSize = minOf(maxWidth, maxHeight * COVER_MAX_HEIGHT_FRACTION)
+            if (track != null && track.cover.isNotEmpty()) {
+                AsyncImage(
+                    model = sizedCoverUrl(track.cover, LARGE_COVER_WIDTH, LARGE_COVER_HEIGHT),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(64.dp),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(coverSize)
+                        .shadow(12.dp, RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(coverSize)
+                        .shadow(12.dp, RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.QueueMusic,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(64.dp),
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
