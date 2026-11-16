@@ -52,7 +52,7 @@ android {
         // rename, follow-finger player dismiss). Standing rule:
         // tag a version only when its features are complete,
         // never one version per commit.
-        versionName = "0.1.3"
+        versionName = "0.1.4"
     }
 
     buildTypes {
