@@ -170,4 +170,42 @@ class PlayUrlTest {
             // expected
         }
     }
+
+    @Test
+    fun `backup_url is kept in order for the picked stream`() {
+        val data = audioData(
+            """{"id":30280,"baseUrl":"https://cdn.example/primary.m4s","bandwidth":1000,"backup_url":["https://cdn.example/backup1.m4s","https://cdn.example/backup2.m4s"]}""",
+        )
+        val picked = parsePlayUrl(json.parseToJsonElement(data))
+        assertEquals(
+            listOf("https://cdn.example/backup1.m4s", "https://cdn.example/backup2.m4s"),
+            picked.backupUrls,
+        )
+    }
+
+    @Test
+    fun `missing backup_url yields an empty backup list`() {
+        val picked = parsePlayUrl(json.parseToJsonElement(audioData(stream(30280))))
+        assertTrue(picked.backupUrls.isEmpty())
+    }
+
+    @Test
+    fun `blank entries duplicates of baseUrl and repeats are dropped from backup_url`() {
+        val data = audioData(
+            """{"id":30280,"baseUrl":"https://cdn.example/primary.m4s","bandwidth":1000,"backup_url":["","https://cdn.example/primary.m4s","https://cdn.example/backup1.m4s","https://cdn.example/backup1.m4s","  "]}""",
+        )
+        val picked = parsePlayUrl(json.parseToJsonElement(data))
+        assertEquals(listOf("https://cdn.example/backup1.m4s"), picked.backupUrls)
+    }
+
+    @Test
+    fun `backup_url of a non-picked stream is ignored`() {
+        val data = audioData(
+            """{"id":30216,"baseUrl":"https://cdn.example/64.m4s","bandwidth":1000,"backup_url":["https://cdn.example/64backup.m4s"]}""",
+            """{"id":30280,"baseUrl":"https://cdn.example/192.m4s","bandwidth":1000,"backup_url":["https://cdn.example/192backup.m4s"]}""",
+        )
+        val picked = parsePlayUrl(json.parseToJsonElement(data))
+        assertEquals(30280, picked.qualityId)
+        assertEquals(listOf("https://cdn.example/192backup.m4s"), picked.backupUrls)
+    }
 }

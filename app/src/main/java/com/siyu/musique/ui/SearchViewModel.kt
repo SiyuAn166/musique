@@ -1152,6 +1152,7 @@ class SearchViewModel(
                 val local = findLocalFile(current)
                 val playUrl: String
                 val qualityId: Int
+                var backupUrls: List<String> = emptyList()
                 if (local != null) {
                     playUrl = File(downloadsDir, local.fileName).toURI().toString()
                     qualityId = local.qualityId
@@ -1161,6 +1162,7 @@ class SearchViewModel(
                     if (intent != playIntent) return@launch
                     playUrl = stream.baseUrl
                     qualityId = stream.qualityId
+                    backupUrls = stream.backupUrls
                 }
                 _resolvedQualityLabel.value = AudioQuality.labelForStreamId(qualityId)
                 _resolvedQualityId.value = qualityId
@@ -1168,7 +1170,7 @@ class SearchViewModel(
                 engineIntent = intent
                 engineHasMedia = true
                 playerEngine.play(
-                    playUrl,
+                    listOf(playUrl) + backupUrls,
                     cacheKey(current, qualityId),
                     PlayerMediaMetadata(current.title, current.artist, current.cover),
                 )
@@ -2094,7 +2096,7 @@ class SearchViewModel(
                 engineHasMedia = true
                 playingLocalRecord = null
                 playerEngine.play(
-                    stream.baseUrl,
+                    listOf(stream.baseUrl) + stream.backupUrls,
                     cacheKey(track, stream.qualityId),
                     PlayerMediaMetadata(track.title, track.artist, track.cover),
                 )

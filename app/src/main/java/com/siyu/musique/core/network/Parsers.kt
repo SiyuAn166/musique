@@ -258,8 +258,13 @@ data class WebTicket(
     val navSubUrl: String?,
 )
 
-/** One DASH audio stream from /x/player/playurl. [baseUrl] is the stream URL; it expires, so it is never stored long term and never logged in full. */
-data class AudioStream(val qualityId: Int, val baseUrl: String, val bandwidth: Long)
+/** One DASH audio stream from /x/player/playurl. [baseUrl] is the stream URL; [backupUrls] are the same audio on other CDN mirrors, tried in order when the primary stalls or fails. URLs expire, so they are never stored long term and never logged in full. */
+data class AudioStream(
+    val qualityId: Int,
+    val baseUrl: String,
+    val bandwidth: Long,
+    val backupUrls: List<String> = emptyList(),
+)
 
 /**
  * The first stream matching [preference]'s try order, or null when
@@ -282,7 +287,10 @@ fun pickAudioStream(
 /**
  * Play URL from /x/player/playurl (fnval 4048): data.dash.audio holds
  * the DASH audio streams; durl, dash.flac, and dash.dolby are ignored.
- * Streams without an id or an empty baseUrl are skipped. Throws
+ * Streams without an id or an empty baseUrl are skipped. Each
+ * stream's `backup_url` array (same audio on other mirrors) is kept
+ * in order for failover: blank entries, non-string entries, and
+ * duplicates of the baseUrl are dropped. Throws
  * [BiliParseException] when dash/audio is missing or empty, or when
  * no stream matches [preference]'s try order.
  */
@@ -300,7 +308,14 @@ fun parsePlayUrl(data: JsonElement, preference: AudioQuality = AudioQuality.BEST
             ?: return@mapNotNull null
         val baseUrl = stream.stringOrNull("baseUrl")?.takeIf { it.isNotEmpty() }
             ?: return@mapNotNull null
-        AudioStream(id, baseUrl, stream.longOrNull("bandwidth") ?: 0L)
+        val backupUrls = stream.arrayOrNull("backup_url")
+            ?.mapNotNull { element ->
+                (element as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+            }
+            ?.filter { it != baseUrl }
+            ?.distinct()
+            .orEmpty()
+        AudioStream(id, baseUrl, stream.longOrNull("bandwidth") ?: 0L, backupUrls)
     }
     return pickAudioStream(streams, preference)
         ?: throw parseError(

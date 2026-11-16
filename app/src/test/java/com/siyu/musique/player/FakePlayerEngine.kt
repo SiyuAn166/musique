@@ -9,8 +9,11 @@ class FakePlayerEngine : PlayerEngine {
     var listener: PlayerEngine.Listener? = null
         private set
 
-    /** (url, cacheKey) pairs passed to [play], in order. */
+    /** (first url, cacheKey) pairs passed to [play], in order. */
     val playCalls = mutableListOf<Pair<String, String>>()
+
+    /** The full URL lists passed to [play], in order (primary first, then backups). */
+    val playUrlLists = mutableListOf<List<String>>()
 
     /** The song metadata from the latest [play] call, or null when none was passed. */
     var lastMetadata: PlayerMediaMetadata? = null
@@ -59,8 +62,9 @@ class FakePlayerEngine : PlayerEngine {
         this.listener = listener
     }
 
-    override fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata?) {
-        playCalls.add(url to cacheKey)
+    override fun play(urls: List<String>, cacheKey: String, metadata: PlayerMediaMetadata?) {
+        playCalls.add((urls.firstOrNull() ?: "") to cacheKey)
+        playUrlLists.add(urls.toList())
         lastMetadata = metadata
         positionMs = 0L
     }

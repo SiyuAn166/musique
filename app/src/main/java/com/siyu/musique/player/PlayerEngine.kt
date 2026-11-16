@@ -52,14 +52,19 @@ interface PlayerEngine {
     fun setListener(listener: Listener?)
 
     /**
-     * Stream [url] (progressive playback, never download-then-play).
-     * [cacheKey] identifies the cached audio (bvid + cid + quality
-     * id); the URL itself is never the cache key because URLs expire.
-     * [metadata] is attached to the media item for the notification
-     * and lock screen; null leaves the item without song info.
-     * Replaces whatever was playing.
+     * Stream [urls] (progressive playback, never download-then-play),
+     * trying them in order: the first is the primary URL, the rest
+     * are backup mirrors for the same audio. Engines move to the
+     * next URL when the current one stalls or fails with a
+     * network/HTTP error, and report [Listener.onError] only when
+     * every URL is exhausted. [cacheKey] identifies the cached audio
+     * (bvid + cid + quality id); the URL itself is never the cache
+     * key because URLs expire, and the same key covers every mirror
+     * of one stream. [metadata] is attached to the media item for the
+     * notification and lock screen; null leaves the item without song
+     * info. Replaces whatever was playing.
      */
-    fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata? = null)
+    fun play(urls: List<String>, cacheKey: String, metadata: PlayerMediaMetadata? = null)
 
     /** Pause, keeping the current item loaded. */
     fun pause()
@@ -119,7 +124,7 @@ interface PlayerEngine {
  */
 object NoOpPlayerEngine : PlayerEngine {
     override fun setListener(listener: PlayerEngine.Listener?) = Unit
-    override fun play(url: String, cacheKey: String, metadata: PlayerMediaMetadata?) = Unit
+    override fun play(urls: List<String>, cacheKey: String, metadata: PlayerMediaMetadata?) = Unit
     override fun pause() = Unit
     override fun resume() = Unit
     override fun stop() = Unit

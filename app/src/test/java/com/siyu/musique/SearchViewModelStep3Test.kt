@@ -115,6 +115,39 @@ class SearchViewModelStep3Test {
         }
 
     @Test
+    fun `play hands the primary URL plus backup mirrors to the engine in order`() =
+        runTest(testDispatcher) {
+            val engine = FakePlayerEngine()
+            val answers = ArrayDeque(
+                listOf(
+                    Result.success(
+                        AudioStream(
+                            30280,
+                            "https://cdn.example/primary.m4s",
+                            216670L,
+                            listOf(
+                                "https://cdn.example/backup1.m4s",
+                                "https://cdn.example/backup2.m4s",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            val vm = viewModel(ScriptedRepository(playUrlAnswers = answers), engine)
+            vm.play(track())
+            advanceUntilIdle()
+            assertEquals(1, engine.playUrlLists.size)
+            assertEquals(
+                listOf(
+                    "https://cdn.example/primary.m4s",
+                    "https://cdn.example/backup1.m4s",
+                    "https://cdn.example/backup2.m4s",
+                ),
+                engine.playUrlLists[0],
+            )
+        }
+
+    @Test
     fun `play exposes the resolved quality label once the URL resolves`() =
         runTest(testDispatcher) {
             val engine = FakePlayerEngine()
