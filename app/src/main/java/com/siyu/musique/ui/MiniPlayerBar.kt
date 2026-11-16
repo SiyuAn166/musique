@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,7 +15,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -42,8 +42,8 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * Slim floating mini player bar: a white card with
  * large rounded corners, a small square cover, title/artist,
- * previous/play-pause/next icon buttons, and a thin progress
- * hairline along the bottom edge driven by [progress]. A resolved quality label ("192K", "Hi-Res") shows as
+ * previous/play-pause/next icon buttons, and a light grey
+ * background fill that grows left to right with [progress]. A resolved quality label ("192K", "Hi-Res") shows as
  * a small black badge before the title when [qualityLabel] is not
  * null. Tapping the bar (not the buttons) opens the player page;
  * the error state shows a retry icon button instead of the
@@ -87,6 +87,7 @@ fun MiniPlayerBar(
     } else {
         0f
     }
+    val progressFillColor = MaterialTheme.colorScheme.surfaceVariant
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -103,6 +104,15 @@ fun MiniPlayerBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .drawBehind {
+                        if (fraction > 0f) {
+                            drawRect(
+                                color = progressFillColor,
+                                size = Size(size.width * fraction, size.height),
+                            )
+                        }
+                    }
                     .clickable(onClick = onOpenPlayer)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -229,14 +239,6 @@ fun MiniPlayerBar(
                     }
                 }
             }
-            LinearProgressIndicator(
-                progress = { fraction },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = MaterialTheme.colorScheme.onSurface,
-                trackColor = MaterialTheme.colorScheme.outlineVariant,
-            )
         }
     }
 }
