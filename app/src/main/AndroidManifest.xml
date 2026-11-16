@@ -9,6 +9,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <!-- Background playback: ExoPlayer holds a partial wake lock
+         while playing (WAKE_MODE_LOCAL), so the CPU stays awake
+         through screen-off track transitions and the next track's
+         URL fetch is not starved by sleep. A normal permission:
+         granted at install, no user prompt. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- In-app updates: the settings check downloads the release APK
          and asks the system installer to install it. The user
          grants "install unknown apps" once, in system settings. -->

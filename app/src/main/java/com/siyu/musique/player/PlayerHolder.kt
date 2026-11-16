@@ -1,6 +1,7 @@
 package com.siyu.musique.player
 
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
@@ -44,7 +45,12 @@ object PlayerHolder {
      * The shared player, streaming through the shared cache.
      * Built once; every later call returns the same instance.
      * The media source factory lives on the builder, so the
-     * engine hands the player plain media items.
+     * engine hands the player plain media items. WAKE_MODE_LOCAL
+     * holds a partial wake lock while playing: the foreground
+     * service keeps the process alive but not the CPU awake, and
+     * without the lock a screen-off track transition starves
+     * (the next track's URL fetch never runs) and playback
+     * stalls on the new track.
      */
     @Synchronized
     fun player(context: Context): ExoPlayer {
@@ -61,6 +67,7 @@ object PlayerHolder {
         )
         return ExoPlayer.Builder(appContext)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
             .also { player = it }
     }
