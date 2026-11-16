@@ -49,9 +49,9 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 /**
- * Settings tab: the cache size (audio + covers) with a clear
- * button, the debug log entry, the manual update check
- * showing the installed version, and the language choice.
+ * Settings tab: the language choice, the cache size (audio +
+ * covers) with a clear button, the debug log entry, and the
+ * manual update check showing the installed version.
  * No title, no back chevron: it is a top-level tab. The size
  * is measured on every entry; clearing re-measures so the
  * freed size shows at once. The shared mini player bar and
@@ -90,6 +90,77 @@ fun SettingsScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Spacer(modifier = Modifier.height(8.dp))
+
+        // Language: the row shows the current choice, and
+        // tapping it opens a dropdown with the four options.
+        // Picking a different one saves it, then recreates the
+        // Activity so the new Activity reads the new value in
+        // attachBaseContext and every string resolves in the
+        // chosen language. The save suspends until it lands; a
+        // failed save leaves the state unchanged and skips the
+        // recreate, so the row never claims a language that
+        // will not survive.
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { languageMenuExpanded = true }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_language),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = languageOptionLabel(languagePreference),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Icon(
+                    imageVector = MusiqueIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(
+                expanded = languageMenuExpanded,
+                onDismissRequest = { languageMenuExpanded = false },
+            ) {
+                LanguagePreference.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(languageOptionLabel(option)) },
+                        onClick = {
+                            languageMenuExpanded = false
+                            if (option != languagePreference) {
+                                languageScope.launch {
+                                    viewModel.setLanguagePreference(option)
+                                    if (viewModel.languagePreference.value == option) {
+                                        (context as? Activity)?.recreate()
+                                    }
+                                }
+                            }
+                        },
+                        leadingIcon = {
+                            if (option == languagePreference) {
+                                Icon(
+                                    imageVector = MusiqueIcons.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
 
         Row(
             modifier = Modifier
@@ -181,76 +252,6 @@ fun SettingsScreen(
             )
         }
 
-        HorizontalDivider(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-
-        // Language: the row shows the current choice, and
-        // tapping it opens a dropdown with the four options.
-        // Picking a different one saves it, then recreates the
-        // Activity so the new Activity reads the new value in
-        // attachBaseContext and every string resolves in the
-        // chosen language. The save suspends until it lands; a
-        // failed save leaves the state unchanged and skips the
-        // recreate, so the row never claims a language that
-        // will not survive.
-        Box {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { languageMenuExpanded = true }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_language),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = languageOptionLabel(languagePreference),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Icon(
-                    imageVector = MusiqueIcons.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            DropdownMenu(
-                expanded = languageMenuExpanded,
-                onDismissRequest = { languageMenuExpanded = false },
-            ) {
-                LanguagePreference.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(languageOptionLabel(option)) },
-                        onClick = {
-                            languageMenuExpanded = false
-                            if (option != languagePreference) {
-                                languageScope.launch {
-                                    viewModel.setLanguagePreference(option)
-                                    if (viewModel.languagePreference.value == option) {
-                                        (context as? Activity)?.recreate()
-                                    }
-                                }
-                            }
-                        },
-                        leadingIcon = {
-                            if (option == languagePreference) {
-                                Icon(
-                                    imageVector = MusiqueIcons.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        },
-                    )
-                }
-            }
-        }
     }
 
     if (showUpdateDialog) {
