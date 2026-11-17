@@ -1333,9 +1333,13 @@ class SearchViewModel(
      * track, and the current track is pushed onto the shuffle
      * history so previous can walk back; shuffle never walks
      * parts. Otherwise, when the current track is a part with a
-     * later part in its video, the next part; else the next track
-     * in queue order, wrapping to the first when repeat-all is on;
-     * null at the end of the queue with repeat off.
+     * later part in its video, the next part, unless the current
+     * track came from a queue entry that names that part: such
+     * an entry is one song, and next moves to the next queue
+     * item instead of walking the collection. Else the next
+     * track in queue order, wrapping to the first when
+     * repeat-all is on; null at the end of the queue with repeat
+     * off.
      */
     private fun pickNextTrack(): Track? {
         val current = _currentTrack.value ?: return null
@@ -1360,10 +1364,14 @@ class SearchViewModel(
      * The track a previous press should play. With shuffle on and a
      * non-empty history, the most recently played track. Otherwise,
      * when the current track is a part past the first in its video,
-     * the previous part; else the previous track in queue order,
-     * wrapping to the last when repeat-all is on; null at the start
-     * of the queue with repeat off. Part walking is sequential
-     * only: shuffle never walks parts, even with an empty history.
+     * the previous part, unless the current track came from a
+     * queue entry that names that part: such an entry is one song,
+     * and previous moves to the previous queue item instead of
+     * walking the collection. Else the previous track in queue
+     * order, wrapping to the last when repeat-all is on; null at
+     * the start of the queue with repeat off. Part walking is
+     * sequential only: shuffle never walks parts, even with an
+     * empty history.
      */
     private fun pickPreviousTrack(): Track? {
         if (_shuffleEnabled.value && shuffleHistory.isNotEmpty()) {
@@ -1387,12 +1395,20 @@ class SearchViewModel(
      * The current track's position within [_currentParts], or -1
      * when the parts are unknown, single, or empty, or the current
      * track is not among them. Matched by [Track.key]: parts of
-     * one video share a bvid, so the cid decides.
+     * one video share a bvid, so the cid decides. Also -1 when the
+     * current track came from a queue entry that names a specific
+     * part: that entry is one song, so navigation stays inside
+     * the queue and never walks the collection. Part walking
+     * applies only to whole-video queue entries and to parts
+     * reached from outside the queue, such as a part picked in
+     * the queue sheet.
      */
     private fun currentPartIndex(): Int {
         val parts = _currentParts.value
         if (parts.size <= 1) return -1
         val current = _currentTrack.value ?: return -1
+        val queueEntry = currentQueue.firstOrNull { it.key == current.key }
+        if (queueEntry != null && queueEntry.cid.isNotEmpty()) return -1
         return parts.indexOfFirst { it.key == current.key }
     }
 

@@ -31,8 +31,11 @@ import org.junit.Test
  * Multi-part videos: the queue always keeps the list the video
  * came from, and next/previous/auto-advance walk the video's
  * parts within that list before moving to the next queue item.
- * The search row keeps the video title, and playlist playback
- * walks parts the same way.
+ * The search row keeps the video title. Whole-video playlist
+ * entries walk parts the same way, but a playlist entry that
+ * names one specific part is that song: next, previous, and
+ * auto-advance stay inside the playlist and never walk the
+ * collection.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PartsQueueTest {
@@ -324,5 +327,64 @@ class PartsQueueTest {
         advanceUntilIdle()
         assertEquals("Other", vm.currentTrack.value?.title)
         assertTrue(engine.playCalls.size == 4)
+    }
+
+    @Test
+    fun `a playlist entry naming one part stays inside the playlist on next previous and end`() =
+        runTest(testDispatcher) {
+            val repository = PartsRepository(threeParts)
+            val engine = FakePlayerEngine()
+            val vm = viewModel(repository, engine)
+            val playlist = Playlist(
+                id = "p1",
+                name = "P",
+                tracks = listOf(threeParts[1], repository.otherTrack),
+            )
+            vm.playFromPlaylist(threeParts[1], playlist)
+            advanceUntilIdle()
+            assertEquals("002. Part Two", vm.currentTrack.value?.title)
+            // The parts are known: only the entry being one song
+            // stops the walking, not missing parts.
+            assertEquals(threeParts, vm.currentParts.value)
+            assertEquals(
+                listOf(threeParts[1], repository.otherTrack),
+                vm.queue.value,
+            )
+            // Next moves to the next playlist song, not part three.
+            vm.playNext()
+            advanceUntilIdle()
+            assertEquals("Other", vm.currentTrack.value?.title)
+            // Previous returns to the part, not part one.
+            vm.playPrevious()
+            advanceUntilIdle()
+            assertEquals("002. Part Two", vm.currentTrack.value?.title)
+            // At the start of the playlist, previous is a no-op.
+            vm.playPrevious()
+            advanceUntilIdle()
+            assertEquals("002. Part Two", vm.currentTrack.value?.title)
+            // Track end auto-advances to the next playlist song.
+            engine.emitEnded()
+            advanceUntilIdle()
+            assertEquals("Other", vm.currentTrack.value?.title)
+        }
+
+    @Test
+    fun `a part picked outside the queue still walks parts`() = runTest(testDispatcher) {
+        val repository = PartsRepository(threeParts)
+        val engine = FakePlayerEngine()
+        val vm = viewModel(repository, engine)
+        vm.search("x")
+        advanceUntilIdle()
+        vm.play(repository.videoTrack)
+        advanceUntilIdle()
+        vm.playPart(threeParts[1])
+        advanceUntilIdle()
+        assertEquals("002. Part Two", vm.currentTrack.value?.title)
+        vm.playNext()
+        advanceUntilIdle()
+        assertEquals("003. Part Three", vm.currentTrack.value?.title)
+        vm.playPrevious()
+        advanceUntilIdle()
+        assertEquals("002. Part Two", vm.currentTrack.value?.title)
     }
 }

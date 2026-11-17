@@ -653,11 +653,13 @@ fun PlayerScreen(
         // Playing queue as a tree: the queue in order, with the
         // playing video's parts as indented compact child rows
         // beneath it (no covers), the current track highlighted.
-        // Tapping a video row with known parts only expands or
-        // collapses its parts, never plays; only tapping a
-        // specific part row plays it. Rows without known parts
-        // play on tap as usual. The parts start expanded whenever
-        // the sheet opens and whenever the video changes.
+        // Tapping a whole-video row with known parts only expands
+        // or collapses its parts, never plays; a row that names
+        // one specific part plays that part on tap instead of
+        // expanding, and only tapping a specific part row plays
+        // it. Rows without known parts play on tap as usual. The
+        // parts start expanded whenever the sheet opens and
+        // whenever the video changes.
         if (queueSheetOpen) {
             ModalBottomSheet(
                 onDismissRequest = { queueSheetOpen = false },
@@ -665,13 +667,17 @@ fun PlayerScreen(
             ) {
                 var partsExpanded by remember(track?.id) { mutableStateOf(true) }
                 // One flattened list: each queue row, followed by
-                // its parts when it is the playing video and the
-                // parts are expanded.
+                // its parts when it is the playing video's
+                // whole-video row and the parts are expanded. A
+                // row that names a specific part never grows the
+                // tree: the queue stays the playlist, not the
+                // collection.
                 val sheetRows = remember(queue, currentParts, track, partsExpanded) {
                     buildList {
                         for (row in queue) {
                             add(QueueSheetRow.Video(row))
-                            if (row.id == track?.id &&
+                            if (row.cid.isEmpty() &&
+                                row.id == track?.id &&
                                 currentParts.size > 1 &&
                                 partsExpanded
                             ) {
@@ -729,18 +735,28 @@ fun PlayerScreen(
                         when (sheetRow) {
                             is QueueSheetRow.Video -> {
                                 // Only the playing video has known
-                                // parts; its row toggles them and
-                                // never plays, with a chevron
-                                // showing the state. Every other
-                                // row plays on tap.
-                                val hasParts = sheetRow.track.id == track?.id &&
+                                // parts, and only a whole-video row
+                                // toggles them, with a chevron showing
+                                // the state. A row that names a
+                                // specific part is that song: it plays
+                                // on tap instead of expanding. Every
+                                // other row plays on tap.
+                                val hasParts = sheetRow.track.cid.isEmpty() &&
+                                    sheetRow.track.id == track?.id &&
                                     currentParts.size > 1
                                 SongRow(
                                     track = sheetRow.track,
-                                    // Rows are videos: match by video
+                                    // Whole-video rows match by video
                                     // id, so the row stays highlighted
-                                    // while any of its parts plays.
-                                    isCurrent = sheetRow.track.id == track?.id,
+                                    // while any of its parts plays. A
+                                    // row that names a specific part
+                                    // matches by key, so it only lights
+                                    // up when that part itself plays.
+                                    isCurrent = if (sheetRow.track.cid.isEmpty()) {
+                                        sheetRow.track.id == track?.id
+                                    } else {
+                                        sheetRow.track.key == track?.key
+                                    },
                                     onClick = {
                                         if (hasParts) {
                                             partsExpanded = !partsExpanded
