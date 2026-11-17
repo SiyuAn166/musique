@@ -5,12 +5,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -43,7 +43,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.R
@@ -53,9 +55,10 @@ import com.siyu.musique.ui.theme.MusiqueIcons
 import kotlinx.coroutines.delay
 
 /**
- * Playlist detail screen: a back chevron on top, then flat song
- * rows like the search rows, with no title text and no dividers
- * between rows. Tapping a row expands a collection to its parts
+ * Playlist detail screen: a back chevron on top, the
+ * playlist's name and song count under it, then flat song
+ * rows like the search rows, with no dividers between rows.
+ * Tapping a row expands a collection to its parts
  * and plays a single video, with the playlist as the queue; a
  * row that names one specific part of a collection plays that
  * part directly and never expands. Tapping a part plays that
@@ -66,9 +69,9 @@ import kotlinx.coroutines.delay
  * mode, the selected count in the middle, a delete icon on the
  * right, and a second row with a select-all checkbox and its
  * label. Floating it keeps the list still: triggering selection
- * never pushes the rows down, and the list reserves the height
- * the bar adds over the plain header, so the bar never covers
- * a row either. Circular checkboxes appear on the left of the rows, tapping a row toggles its checkbox instead
+ * never pushes the rows down, and the title row under the header
+ * reserves the height the bar adds over the plain header, so the
+ * bar never covers a row either. Circular checkboxes appear on the left of the rows, tapping a row toggles its checkbox instead
  * of playing, and a checked row paints the darker container
  * grey, distinct from the bar's grey, against the clean white
  * of the rest. Deleting asks first, through a confirmation
@@ -170,15 +173,16 @@ fun PlaylistDetailScreen(
 
     // The contextual action bar floats above the page instead of
     // sitting in the column: triggering selection mode must not
-    // push the list down. The list permanently reserves the
-    // height the bar adds over the plain header, so the bar
-    // never covers a row either: when it appears it fills
-    // exactly the reserved space, and nothing moves. Both
-    // heights are measured at runtime; the estimates cover the
-    // first frames.
+    // push the list down. The height the bar adds over the plain
+    // header is reserved permanently as a title row with the
+    // playlist's name and song count, so the top never sits
+    // empty outside selection mode and the bar never covers a
+    // song row: when it appears it covers the header and the
+    // title row exactly, and nothing moves. Both heights are
+    // measured at runtime; the estimates cover the first frames.
     var headerHeight by remember { mutableStateOf(HEADER_HEIGHT_ESTIMATE_DP.dp) }
     var cabHeight by remember { mutableStateOf(CAB_HEIGHT_ESTIMATE_DP.dp) }
-    val listTopPadding = (cabHeight - headerHeight).coerceAtLeast(0.dp)
+    val titleRowHeight = (cabHeight - headerHeight).coerceAtLeast(0.dp)
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -206,6 +210,32 @@ fun PlaylistDetailScreen(
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(titleRowHeight)
+                    .padding(horizontal = SONG_ROW_HORIZONTAL_PADDING_DP.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (playlist != null) {
+                    Text(
+                        text = playlistDisplayName(playlist),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = songCountLabel(playlist.trackCount),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             if (playlist == null) {
@@ -262,7 +292,6 @@ fun PlaylistDetailScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(top = listTopPadding),
                     ) {
                         itemsIndexed(
                             rows,

@@ -19,7 +19,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -96,42 +95,39 @@ fun HomeScreen(
                 )
             }
         }
-        Surface(
+        // The title floats with no shadow and no edge: the same
+        // opaque background as the page, so it reads as one layer
+        // with the content sliding underneath it.
+        Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
                 .onSizeChanged { size ->
                     titleHeight = with(density) { size.height.toDp() }
-                },
-            color = MaterialTheme.colorScheme.background,
-            shadowElevation = 4.dp,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.playlists_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                IconButton(
-                    onClick = {
-                        newPlaylistName = ""
-                        showCreatePlaylistDialog = true
-                    },
-                ) {
-                    Icon(
-                        imageVector = MusiqueIcons.Add,
-                        contentDescription = stringResource(R.string.create_playlist),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp),
-                    )
                 }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.playlists_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = {
+                    newPlaylistName = ""
+                    showCreatePlaylistDialog = true
+                },
+            ) {
+                Icon(
+                    imageVector = MusiqueIcons.Add,
+                    contentDescription = stringResource(R.string.create_playlist),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(24.dp),
+                )
             }
         }
     }
