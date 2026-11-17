@@ -10,7 +10,6 @@ import com.siyu.musique.data.DownloadStore
 import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryDownloadStore
 import com.siyu.musique.data.InMemoryPlaybackModeStore
-import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.DetailedTrack
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
@@ -196,7 +195,6 @@ class DownloadViewModelTest {
         InMemoryPlaylistStore(),
         InMemoryPlaybackModeStore(),
         InMemoryAppCache(),
-        InMemoryPlaybackStateStore(),
         downloadStore,
         downloader,
         downloadsDir,

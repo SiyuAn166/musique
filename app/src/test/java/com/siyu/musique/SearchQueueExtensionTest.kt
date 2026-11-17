@@ -30,9 +30,9 @@ import org.junit.Test
 /**
  * A queue adopted from search results keeps growing as more
  * search pages load, instead of freezing at the page that was
- * loaded when the user tapped play. Playlist and restored
- * queues never grow, and neither does a queue whose search has
- * moved on to another query.
+ * loaded when the user tapped play. Playlist queues never grow,
+ * and neither does a queue whose search has moved on to another
+ * query.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SearchQueueExtensionTest {

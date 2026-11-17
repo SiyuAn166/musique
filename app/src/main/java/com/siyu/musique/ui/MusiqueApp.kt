@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -53,7 +54,6 @@ import com.siyu.musique.data.DownloadStore
 import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryDownloadStore
 import com.siyu.musique.data.InMemoryPlaybackModeStore
-import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryLanguagePreferenceStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
@@ -62,7 +62,6 @@ import com.siyu.musique.data.NoOpUpdateApkInstaller
 import com.siyu.musique.data.NoOpUpdateChecker
 import com.siyu.musique.data.LanguagePreferenceStore
 import com.siyu.musique.data.PlaybackModeStore
-import com.siyu.musique.data.PlaybackStateStore
 import com.siyu.musique.data.PlaylistStore
 import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.SearchRepository
@@ -98,14 +97,17 @@ import java.io.File
  * the synthetic playlist), so they are safe to carry in a route.
  *
  * The shell owns one shared mini player bar and the bottom tab
- * bar, below the NavHost: the tab bar shows only on the three
- * tab destinations, and the mini bar shows on the tab
- * destinations, the playlist detail, and the playlists screen,
- * but never on the log screen. Both bars hide while the player
- * sits at rest, so nothing shows through its translucent
- * background, and reappear for the dismiss drag, so the reveal
- * shows the whole page. No Scaffold: the screens pad
- * themselves for the safe drawing insets.
+ * bar. The tab bar sits below the NavHost and shows only on the
+ * three tab destinations. The mini bar floats above every page
+ * at one fixed height, a tab bar's height above the bottom edge,
+ * so switching pages never moves it; pages without tabs keep
+ * the same gap below it. It shows on the tab destinations, the
+ * playlist detail, and the playlists screen, but never on the
+ * log screen. Both bars hide while the player sits at rest, so
+ * nothing shows through its translucent background, and reappear
+ * for the dismiss drag, so the reveal shows the whole page. No
+ * Scaffold: the screens pad themselves for the safe drawing
+ * insets.
  */
 @Composable
 fun MusiqueApp(
@@ -116,7 +118,6 @@ fun MusiqueApp(
     languagePreferenceStore: LanguagePreferenceStore = InMemoryLanguagePreferenceStore(),
     playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
-    playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
     downloadStore: DownloadStore = InMemoryDownloadStore(),
     audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
     downloadsDir: File = defaultDownloadsDir(),
@@ -135,7 +136,6 @@ fun MusiqueApp(
             playlistStore,
             playbackModeStore,
             appCache,
-            playbackStateStore,
             downloadStore,
             audioFileDownloader,
             downloadsDir,
@@ -175,6 +175,18 @@ fun MusiqueApp(
     val showMiniBar = (showTabs ||
         currentRoute == "playlists" ||
         currentRoute == "playlist/{playlistId}") && (!playerOpen || playerDragging)
+
+    // The floating mini bar's measured height, so the page
+    // content ends above it instead of running underneath. It
+    // starts at the bar's usual height and corrects itself on
+    // the first measurement, so the content never jumps.
+    var miniBarHeight by remember { mutableStateOf(MINI_BAR_HEIGHT_ESTIMATE_DP.dp) }
+    val density = LocalDensity.current
+    val contentBottomPadding = if (showMiniBar) {
+        miniBarHeight + if (showTabs) 0.dp else TAB_BAR_HEIGHT_DP.dp
+    } else {
+        0.dp
+    }
 
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
@@ -235,7 +247,11 @@ fun MusiqueApp(
                             }
                         },
                 ) {
-                    Box(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(bottom = contentBottomPadding),
+                    ) {
                         NavHost(
                             navController = navController,
                             startDestination = "home",
@@ -293,21 +309,6 @@ fun MusiqueApp(
                                 )
                             }
                         }
-                    }
-
-                    if (showMiniBar) {
-                        MiniPlayerBar(
-                            track = currentTrack,
-                            isPlaying = isPlaying,
-                            playerState = playerState,
-                            progress = progress,
-                            onTogglePlayPause = { viewModel.togglePlayPause() },
-                            onRetry = { viewModel.retryPlayback() },
-                            onOpenPlayer = { playerOpen = true },
-                            onPrevious = { viewModel.playPrevious() },
-                            onNext = { viewModel.playNext() },
-                            qualityLabel = resolvedQualityLabel,
-                        )
                     }
 
                     if (showTabs) {
@@ -389,6 +390,50 @@ fun MusiqueApp(
                         }
                     }
                 }
+                // The mini bar floats above every page at one
+                // fixed height, a tab bar's height above the
+                // bottom edge, instead of sitting in the column
+                // above the tab bar: pages without tabs used to
+                // pull it down to the bottom edge. Its height is
+                // measured so the page content ends above it.
+                // The touch barrier matches the shell column's:
+                // while the player is open, nothing the player
+                // did not use reaches the bar underneath.
+                if (showMiniBar) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(bottom = TAB_BAR_HEIGHT_DP.dp)
+                            .onSizeChanged { size ->
+                                miniBarHeight = with(density) {
+                                    size.height.toDp()
+                                }
+                            }
+                            .pointerInput(playerOpen) {
+                                if (playerOpen) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            awaitPointerEvent().changes.forEach { it.consume() }
+                                        }
+                                    }
+                                }
+                            },
+                    ) {
+                        MiniPlayerBar(
+                            track = currentTrack,
+                            isPlaying = isPlaying,
+                            playerState = playerState,
+                            progress = progress,
+                            onTogglePlayPause = { viewModel.togglePlayPause() },
+                            onRetry = { viewModel.retryPlayback() },
+                            onOpenPlayer = { playerOpen = true },
+                            onPrevious = { viewModel.playPrevious() },
+                            onNext = { viewModel.playNext() },
+                            qualityLabel = resolvedQualityLabel,
+                        )
+                    }
+                }
                 // The player is a full-screen overlay above the
                 // shell, not a navigation destination: the tab
                 // destination stays composed underneath, so
@@ -412,6 +457,9 @@ fun MusiqueApp(
 
 /** The height of the bottom tab row: shorter than the 80dp Material default. */
 private const val TAB_BAR_HEIGHT_DP: Int = 56
+
+/** The mini bar's usual height, the starting estimate before its first measurement. */
+private const val MINI_BAR_HEIGHT_ESTIMATE_DP: Int = 72
 
 /** Tab taps are ignored for this long after the keyboard hides, so a dismiss tap falling through cannot switch tabs. */
 private const val IME_HIDE_TAP_GUARD_MS: Long = 300L

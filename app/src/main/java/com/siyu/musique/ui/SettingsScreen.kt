@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -71,6 +72,9 @@ fun SettingsScreen(
 
     var showUpdateDialog by remember { mutableStateOf(false) }
     var needsInstallPermission by remember { mutableStateOf(false) }
+
+    /** Whether the clear-cache confirmation dialog is open. */
+    var showClearCacheDialog by remember { mutableStateOf(false) }
 
     /** Whether the language dropdown menu is open. */
     var languageMenuExpanded by remember { mutableStateOf(false) }
@@ -184,7 +188,7 @@ fun SettingsScreen(
                 softWrap = false,
             )
             IconButton(
-                onClick = { viewModel.clearCache() },
+                onClick = { showClearCacheDialog = true },
                 enabled = !clearingCache && (cacheSizeBytes ?: 0L) > 0L,
             ) {
                 Icon(
@@ -275,6 +279,41 @@ fun SettingsScreen(
             onDismiss = {
                 showUpdateDialog = false
                 viewModel.dismissUpdateState()
+            },
+        )
+    }
+
+    // Clearing the cache asks first: the cached audio and covers
+    // are freed at once, and the size re-measures after.
+    if (showClearCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearCacheDialog = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(36.dp),
+            title = { Text(stringResource(R.string.clear_cache)) },
+            text = { Text(stringResource(R.string.clear_cache_message)) },
+            confirmButton = {
+                IconButton(
+                    onClick = {
+                        showClearCacheDialog = false
+                        viewModel.clearCache()
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Check,
+                        contentDescription = stringResource(R.string.clear_cache),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            },
+            dismissButton = {
+                IconButton(onClick = { showClearCacheDialog = false }) {
+                    Icon(
+                        imageVector = MusiqueIcons.Clear,
+                        contentDescription = stringResource(R.string.cancel),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             },
         )
     }

@@ -63,7 +63,8 @@ internal const val PART_ROW_DIVIDER_START_DP: Int =
  * slightly rounded corners, title + artist, duration on the
  * right, and a caller-supplied trailing icon action (add on
  * search, remove on playlist detail). The current track's title
- * is bold. The caller draws the hairline divider between rows.
+ * is bold. The caller draws the hairline divider between rows,
+ * except the playlist detail screen, which shows no dividers.
  * A [compact] row skips the cover entirely and tightens the
  * vertical padding: the indented part rows in the queue sheet,
  * where the video's cover already shows on the parent row.
@@ -72,6 +73,10 @@ internal const val PART_ROW_DIVIDER_START_DP: Int =
  * of a frozen row; compact rows have no cover to dim.
  * [onLongClick] is null for rows with no long-press action; rows
  * that support it (playlist entries) enter selection mode.
+ * [leading] draws a caller-supplied control before the cover
+ * (the selection checkbox on playlist entries); [highlighted]
+ * paints the whole row in the light grey used for checked and
+ * dragged rows, against the clean white of the rest.
  */
 @Composable
 fun SongRow(
@@ -83,10 +88,19 @@ fun SongRow(
     compact: Boolean = false,
     loading: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    leading: (@Composable () -> Unit)? = null,
+    highlighted: Boolean = false,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .background(
+                if (highlighted) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    Color.Transparent
+                },
+            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(
                 horizontal = SONG_ROW_HORIZONTAL_PADDING_DP.dp,
@@ -98,6 +112,10 @@ fun SongRow(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (leading != null) {
+            leading()
+            Spacer(modifier = Modifier.width(SONG_ROW_COVER_GAP_DP.dp))
+        }
         if (!compact) {
             Box(
                 modifier = Modifier

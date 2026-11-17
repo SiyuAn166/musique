@@ -5,9 +5,7 @@ import com.siyu.musique.core.logging.MusiqueLogger
 import com.siyu.musique.core.network.AudioQuality
 import com.siyu.musique.core.network.AudioStream
 import com.siyu.musique.data.DetailedTrack
-import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
-import com.siyu.musique.data.SavedPlayback
 import com.siyu.musique.data.SearchRepository
 import com.siyu.musique.model.Playlist
 import com.siyu.musique.model.Track
@@ -76,13 +74,11 @@ class QueueListTest {
 
     private fun viewModel(
         engine: FakePlayerEngine,
-        stateStore: InMemoryPlaybackStateStore = InMemoryPlaybackStateStore(),
     ) = SearchViewModel(
         QueueRepository(listOf(trackA, trackB)),
         engine,
         MusiqueLogger(LogBuffer(capacity = 50, clock = { 1000L })),
         InMemoryQualityPreferenceStore(),
-        playbackStateStore = stateStore,
     )
 
     @Test
@@ -135,14 +131,4 @@ class QueueListTest {
         assertEquals("A", vm.currentTrack.value?.title)
     }
 
-    @Test
-    fun `queue follows restored playback`() = runTest(testDispatcher) {
-        val engine = FakePlayerEngine()
-        val store = InMemoryPlaybackStateStore(
-            SavedPlayback(listOf(trackB, trackC), trackB.key, 0L),
-        )
-        val vm = viewModel(engine, store)
-        advanceUntilIdle()
-        assertEquals(listOf(trackB, trackC), vm.queue.value)
-    }
 }

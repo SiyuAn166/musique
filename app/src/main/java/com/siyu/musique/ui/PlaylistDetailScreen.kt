@@ -1,6 +1,8 @@
 package com.siyu.musique.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,59 +12,69 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.siyu.musique.R
 import com.siyu.musique.model.Track
+import com.siyu.musique.model.moved
 import com.siyu.musique.ui.theme.MusiqueIcons
+import kotlinx.coroutines.delay
 
 /**
- * Playlist detail screen: a back chevron and action icons on
- * top, then flat song rows like the search rows, with no title
- * text. Tapping a row expands a collection to its parts and plays
- * a single video, with the playlist as the queue; tapping a part
- * plays that part.
- * The multi-select button at the top turns on selection mode:
- * checkboxes appear on the rows, tapping a row toggles its
- * checkbox instead of playing, and a trash icon at the top is
- * visible for the whole mode, greyed until at least one song is
- * checked, then black to remove all selected songs at once.
+ * Playlist detail screen: a back chevron on top, then flat song
+ * rows like the search rows, with no title text and no dividers
+ * between rows. Tapping a row expands a collection to its parts
+ * and plays a single video, with the playlist as the queue;
+ * tapping a part plays that part.
  * Long-pressing a row enters selection mode with that row
- * checked, so the trash icon is usable right away. Tapping the
- * button again leaves selection mode and clears the selection.
- * User-created playlists get an edit icon to rename the playlist
- * and a trash icon to delete the whole playlist, both hidden
- * while selection mode is on; the default playlist and the
- * Downloads playlist cannot be renamed or deleted, so neither
- * icon shows for them. Removing songs from the
- * Downloads playlist deletes the downloaded files as well. An
- * empty playlist shows a short empty message, except Downloads,
- * which shows nothing when empty. The shared mini player
- * bar sits below this screen, owned by the app shell.
+ * checked, and the header turns into a contextual action bar:
+ * the tab bar's background color, a back button that leaves the
+ * mode, the selected count in the middle, a delete icon on the
+ * right, and a second row with a select-all checkbox and its
+ * label. Circular checkboxes appear on the left of the rows,
+ * tapping a row toggles its checkbox instead of playing, and a
+ * checked row paints the light grey highlight against the clean
+ * white of the rest. Deleting asks first, through a confirmation
+ * dialog; removing songs from the Downloads playlist deletes the
+ * downloaded files as well.
+ * The right side of every row in the default and user playlists
+ * holds only a drag handle: dragging it reorders the songs, and
+ * the new order is saved when the drag ends. The Downloads
+ * playlist has no handle, its order comes from the download
+ * records. Renaming and deleting a playlist live on the playlist
+ * list's long-press menu, not on this screen. An empty playlist
+ * shows a short empty message, except Downloads, which shows
+ * nothing when empty. The shared mini player bar floats above
+ * this screen, owned by the app shell.
  */
 @Composable
 fun PlaylistDetailScreen(
@@ -88,14 +100,44 @@ fun PlaylistDetailScreen(
     /** Bvids whose parts are expanded in the list. Expansion hides while selecting. */
     var expandedVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    /** Whether the rename dialog is open. */
-    var showRenameDialog by remember { mutableStateOf(false) }
-
-    /** The name typed in the rename dialog, prefilled with the current name on open. */
-    var renameName by remember { mutableStateOf("") }
+    /** Whether the delete confirmation dialog is open. */
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     /** The entry whose row tap is waiting on a parts load to decide between expanding and playing. */
     var pendingTapTrack by remember { mutableStateOf<Track?>(null) }
+
+    // Drag-to-reorder state. A drag works on a local copy of the
+    // entry order and commits it to the ViewModel only when the
+    // drag ends, so a cancelled drag leaves the saved order
+    // untouched.
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val edgeScrollThresholdPx = with(density) { EDGE_SCROLL_THRESHOLD_DP.dp.toPx() }
+
+    /** Key of the row being dragged, or null when no drag is running. */
+    var draggingKey by remember { mutableStateOf<String?>(null) }
+
+    /** The dragged row's vertical offset from its laid-out position, in pixels. */
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+
+    /** The entry order as the drag rearranges it, or null outside a drag. */
+    var dragOrder by remember { mutableStateOf<List<Track>?>(null) }
+
+    /** Edge auto-scroll direction while dragging: -1 up, 1 down, 0 still. */
+    var edgeScrollDirection by remember { mutableIntStateOf(0) }
+
+    // While a drag holds the row near an edge, the list scrolls
+    // under it so the row can travel past the visible rows. One
+    // loop, restarted when the direction changes: scrolling from
+    // the drag events themselves would queue up faster than the
+    // list can apply.
+    LaunchedEffect(draggingKey, edgeScrollDirection) {
+        if (draggingKey == null || edgeScrollDirection == 0) return@LaunchedEffect
+        while (true) {
+            listState.dispatchRawDelta(edgeScrollDirection * EDGE_SCROLL_PX_PER_TICK)
+            delay(EDGE_SCROLL_TICK_MS)
+        }
+    }
 
     // A row tap on an entry with unknown parts waits for the
     // load: a collection expands, a single video plays (unless
@@ -126,95 +168,105 @@ fun PlaylistDetailScreen(
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, end = 8.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = MusiqueIcons.ChevronLeft,
-                    contentDescription = stringResource(R.string.back),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            if (playlist != null && playlist.tracks.isNotEmpty()) {
-                IconButton(
-                    onClick = {
-                        selecting = !selecting
-                        if (!selecting) selectedKeys = emptySet()
-                    },
+        if (selecting && playlist != null) {
+            // Contextual action bar: the tab bar's background,
+            // a back button that leaves selection mode, the
+            // selected count in the middle, the delete icon on
+            // the right, and a select-all row of its own.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainer),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = MusiqueIcons.PlaylistAddCheck,
-                        contentDescription = if (selecting) {
-                            stringResource(R.string.done_selecting)
-                        } else {
-                            stringResource(R.string.select_songs)
+                    IconButton(
+                        onClick = {
+                            selecting = false
+                            selectedKeys = emptySet()
                         },
-                        tint = if (selecting) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                    ) {
+                        Icon(
+                            imageVector = MusiqueIcons.ChevronLeft,
+                            contentDescription = stringResource(R.string.exit_selection),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    Text(
+                        text = pluralStringResource(
+                            R.plurals.selected_songs,
+                            selectedKeys.size,
+                            selectedKeys.size,
+                        ),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f),
                     )
+                    IconButton(
+                        enabled = selectedKeys.isNotEmpty(),
+                        onClick = { showDeleteDialog = true },
+                    ) {
+                        Icon(
+                            imageVector = MusiqueIcons.Delete,
+                            contentDescription = stringResource(R.string.delete_selected),
+                            tint = if (selectedKeys.isNotEmpty()) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
-            }
-            if (!selecting && playlist != null && !playlist.isDefault && !playlist.isDownloads) {
-                IconButton(
-                    onClick = {
-                        renameName = playlist.name
-                        showRenameDialog = true
-                    },
-                ) {
-                    Icon(
-                        imageVector = MusiqueIcons.Edit,
-                        contentDescription = stringResource(R.string.rename_playlist),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        viewModel.deletePlaylist(playlist.id)
-                        onBack()
-                    },
-                ) {
-                    Icon(
-                        imageVector = MusiqueIcons.Delete,
-                        contentDescription = stringResource(R.string.delete_playlist),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-            if (playlist != null && selecting) {
-                IconButton(
-                    enabled = selectedKeys.isNotEmpty(),
-                    onClick = {
-                        if (playlist.isDownloads) {
-                            // Deleting a download removes every
-                            // file and record for the song, at
-                            // every downloaded quality.
-                            downloadRecords
-                                .filter { it.track.key in selectedKeys }
-                                .forEach { viewModel.deleteDownload(it) }
-                        } else {
-                            viewModel.removeTracksFromPlaylist(playlist.id, selectedKeys)
+                val allSelected = playlist.tracks.isNotEmpty() &&
+                    selectedKeys.size == playlist.tracks.size
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selectedKeys = if (allSelected) {
+                                emptySet()
+                            } else {
+                                playlist.tracks.mapTo(mutableSetOf()) { it.key }
+                            }
                         }
-                        selectedKeys = emptySet()
-                    },
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = MusiqueIcons.Delete,
-                        contentDescription = stringResource(R.string.remove_selected),
-                        tint = if (selectedKeys.isNotEmpty()) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                    RoundCheckbox(checked = allSelected, onCheckedChange = null)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = stringResource(
+                            if (allSelected) {
+                                R.string.deselect_all
+                            } else {
+                                R.string.select_all
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = MusiqueIcons.ChevronLeft,
+                        contentDescription = stringResource(R.string.back),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
 
@@ -248,9 +300,13 @@ fun PlaylistDetailScreen(
                 // under it when expanded and known to have more
                 // than one. Selection mode shows entries only:
                 // removal works on whole entries, never on parts.
-                val rows = remember(playlist.tracks, videoParts, expandedVideoIds, selecting) {
+                // A drag shows its local order instead of the
+                // saved one, and collapses every expansion, so
+                // the row index is the entry index throughout.
+                val displayTracks = dragOrder ?: playlist.tracks
+                val rows = remember(displayTracks, videoParts, expandedVideoIds, selecting) {
                     buildList {
-                        playlist.tracks.forEach { track ->
+                        displayTracks.forEach { track ->
                             add(DetailListRow.Video(track))
                             val parts = videoParts[track.id]
                             if (!selecting && track.id in expandedVideoIds &&
@@ -261,15 +317,19 @@ fun PlaylistDetailScreen(
                         }
                     }
                 }
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f),
+                ) {
                     itemsIndexed(
                         rows,
                         key = { _, row -> row.key },
-                    ) { index, listRow ->
+                    ) { _, listRow ->
                         when (listRow) {
                             is DetailListRow.Video -> {
                                 val track = listRow.track
                                 val expanded = track.id in expandedVideoIds
+                                val isDragging = draggingKey == track.key
                                 SongRow(
                                     track = track,
                                     // Rows are videos: match by bvid, since the
@@ -279,18 +339,40 @@ fun PlaylistDetailScreen(
                                     // A parts lookup in flight dims the cover
                                     // under a spinner instead of a frozen row.
                                     loading = track.id in partsLoadingIds,
+                                    // Checked rows and the dragged row
+                                    // paint the light grey highlight.
+                                    highlighted = track.key in selectedKeys || isDragging,
+                                    leading = if (selecting) {
+                                        {
+                                            RoundCheckbox(
+                                                checked = track.key in selectedKeys,
+                                                onCheckedChange = { checked ->
+                                                    selectedKeys = if (checked) {
+                                                        selectedKeys + track.key
+                                                    } else {
+                                                        selectedKeys - track.key
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
                                     // Long-pressing enters selection mode
-                                    // with this row checked, so the trash
+                                    // with this row checked, so the delete
                                     // icon is usable right away.
                                     onLongClick = {
-                                        selecting = true
-                                        selectedKeys = if (track.key in selectedKeys) {
-                                            selectedKeys - track.key
-                                        } else {
-                                            selectedKeys + track.key
+                                        if (draggingKey == null) {
+                                            selecting = true
+                                            selectedKeys = if (track.key in selectedKeys) {
+                                                selectedKeys - track.key
+                                            } else {
+                                                selectedKeys + track.key
+                                            }
                                         }
                                     },
                                     onClick = {
+                                        if (draggingKey != null) return@SongRow
                                         if (selecting) {
                                             selectedKeys = if (track.key in selectedKeys) {
                                                 selectedKeys - track.key
@@ -322,25 +404,84 @@ fun PlaylistDetailScreen(
                                         }
                                     },
                                     trailing = {
-                                        if (selecting) {
-                                            Checkbox(
-                                                checked = track.key in selectedKeys,
-                                                onCheckedChange = { checked ->
-                                                    selectedKeys = if (checked) {
-                                                        selectedKeys + track.key
-                                                    } else {
-                                                        selectedKeys - track.key
+                                        if (!playlist.isDownloads && !selecting) {
+                                            DragHandle(
+                                                onDragStart = {
+                                                    draggingKey = track.key
+                                                    dragOffsetY = 0f
+                                                    dragOrder = playlist.tracks
+                                                    expandedVideoIds = emptySet()
+                                                    edgeScrollDirection = 0
+                                                },
+                                                onDrag = dragHandler@{ dragAmountY ->
+                                                    val key = draggingKey ?: return@dragHandler
+                                                    val order = dragOrder ?: return@dragHandler
+                                                    dragOffsetY += dragAmountY
+                                                    val fromIndex = order.indexOfFirst { it.key == key }
+                                                    if (fromIndex < 0) return@dragHandler
+                                                    val layoutInfo = listState.layoutInfo
+                                                    val draggedInfo = layoutInfo.visibleItemsInfo
+                                                        .firstOrNull { it.key == key }
+                                                        ?: return@dragHandler
+                                                    val draggedCenter = draggedInfo.offset +
+                                                        dragOffsetY + draggedInfo.size / 2
+                                                    // The row under the dragged row's
+                                                    // center trades places with it; the
+                                                    // offset gives back the traded row's
+                                                    // height, so the dragged row stays
+                                                    // under the finger.
+                                                    val target = layoutInfo.visibleItemsInfo
+                                                        .firstOrNull { info ->
+                                                            info.key != key &&
+                                                                draggedCenter >= info.offset &&
+                                                                draggedCenter <= info.offset + info.size
+                                                        }
+                                                    if (target != null && target.index != fromIndex) {
+                                                        dragOrder = order.moved(fromIndex, target.index)
+                                                        dragOffsetY += if (target.index > fromIndex) {
+                                                            -target.size.toFloat()
+                                                        } else {
+                                                            target.size.toFloat()
+                                                        }
+                                                    }
+                                                    // Near an edge the list scrolls
+                                                    // under the held row.
+                                                    edgeScrollDirection = when {
+                                                        draggedCenter <
+                                                            layoutInfo.viewportStartOffset +
+                                                            edgeScrollThresholdPx -> -1
+                                                        draggedCenter >
+                                                            layoutInfo.viewportEndOffset -
+                                                            edgeScrollThresholdPx -> 1
+                                                        else -> 0
                                                     }
                                                 },
-                                                colors = CheckboxDefaults.colors(
-                                                    checkedColor = MaterialTheme.colorScheme.onSurface,
-                                                    uncheckedColor =
-                                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    checkmarkColor = MaterialTheme.colorScheme.surface,
-                                                ),
+                                                onDragEnd = {
+                                                    val order = dragOrder
+                                                    draggingKey = null
+                                                    dragOffsetY = 0f
+                                                    dragOrder = null
+                                                    edgeScrollDirection = 0
+                                                    if (order != null) {
+                                                        viewModel.reorderPlaylistTracks(
+                                                            playlist.id,
+                                                            order.map { it.key },
+                                                        )
+                                                    }
+                                                },
                                             )
                                         }
                                     },
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .graphicsLayer {
+                                            translationY = if (isDragging) dragOffsetY else 0f
+                                            shadowElevation = if (isDragging) {
+                                                with(density) { DRAGGED_ROW_ELEVATION_DP.dp.toPx() }
+                                            } else {
+                                                0f
+                                            }
+                                        },
                                 )
                             }
                             is DetailListRow.Part -> {
@@ -353,25 +494,14 @@ fun PlaylistDetailScreen(
                                         viewModel.playFromPlaylist(listRow.track, playlist)
                                     },
                                     trailing = {},
-                                    modifier = Modifier.padding(
-                                        start = PART_ROW_INDENT_DP.dp,
-                                    ),
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .padding(
+                                            start = PART_ROW_INDENT_DP.dp,
+                                        ),
                                     compact = true,
                                 )
                             }
-                        }
-                        if (index < rows.lastIndex) {
-                            val dividerStartDp = if (listRow is DetailListRow.Part) {
-                                PART_ROW_DIVIDER_START_DP
-                            } else {
-                                SONG_ROW_DIVIDER_START_DP
-                            }
-                            HorizontalDivider(
-                                modifier = Modifier.padding(
-                                    start = dividerStartDp.dp,
-                                ),
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
                         }
                     }
                 }
@@ -379,54 +509,65 @@ fun PlaylistDetailScreen(
         }
     }
 
-    // Rename dialog, from the edit icon in the header. Mirrors
-    // the create-playlist dialog: the field starts with the
-    // current name, blank names are rejected, duplicate names
-    // are allowed.
-    if (showRenameDialog && playlist != null) {
+    // Delete confirmation: removing songs from a playlist, or
+    // songs and their files from Downloads, asks first. The
+    // selection clears and selection mode stays on, as before.
+    if (showDeleteDialog && playlist != null) {
+        val count = selectedKeys.size
         AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
+            onDismissRequest = { showDeleteDialog = false },
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(36.dp),
-            title = { Text(stringResource(R.string.rename_playlist)) },
-            text = {
-                TextField(
-                    value = renameName,
-                    onValueChange = { renameName = it },
-                    placeholder = { Text(stringResource(R.string.playlist_name_hint)) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(50.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.onSurface,
-                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            title = {
+                Text(
+                    stringResource(
+                        if (playlist.isDownloads) {
+                            R.string.delete_downloads_title
+                        } else {
+                            R.string.delete_songs_title
+                        },
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            text = {
+                Text(
+                    pluralStringResource(
+                        if (playlist.isDownloads) {
+                            R.plurals.delete_downloads_message
+                        } else {
+                            R.plurals.delete_songs_message
+                        },
+                        count,
+                        count,
+                    ),
                 )
             },
             confirmButton = {
                 IconButton(
-                    enabled = renameName.isNotBlank(),
                     onClick = {
-                        viewModel.renamePlaylist(playlist.id, renameName)
-                        showRenameDialog = false
+                        if (playlist.isDownloads) {
+                            // Deleting a download removes every
+                            // file and record for the song, at
+                            // every downloaded quality.
+                            downloadRecords
+                                .filter { it.track.key in selectedKeys }
+                                .forEach { viewModel.deleteDownload(it) }
+                        } else {
+                            viewModel.removeTracksFromPlaylist(playlist.id, selectedKeys)
+                        }
+                        selectedKeys = emptySet()
+                        showDeleteDialog = false
                     },
                 ) {
                     Icon(
                         imageVector = MusiqueIcons.Check,
-                        contentDescription = stringResource(R.string.rename),
+                        contentDescription = stringResource(R.string.delete_selected),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             },
             dismissButton = {
-                IconButton(onClick = { showRenameDialog = false }) {
+                IconButton(onClick = { showDeleteDialog = false }) {
                     Icon(
                         imageVector = MusiqueIcons.Clear,
                         contentDescription = stringResource(R.string.cancel),
@@ -437,6 +578,62 @@ fun PlaylistDetailScreen(
         )
     }
 }
+
+/**
+ * The drag handle on a playlist row: the six-dot grip. Dragging
+ * it starts a reorder drag; the row itself keeps its tap and
+ * long-press behavior, so multi-select and sorting stay apart.
+ * The callbacks are read through updated state because the
+ * gesture block below runs once per handle: a stale closure
+ * would drag with the playlist order from the first
+ * composition.
+ */
+@Composable
+private fun DragHandle(
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { currentOnDragStart() },
+                    onDragCancel = { currentOnDragEnd() },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(dragAmount.y)
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = MusiqueIcons.DragIndicator,
+            contentDescription = stringResource(R.string.drag_to_reorder),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+/** How close to an edge a dragged row must get before the list auto-scrolls. */
+private const val EDGE_SCROLL_THRESHOLD_DP: Int = 56
+
+/** Pixels scrolled per auto-scroll tick while a drag holds near an edge. */
+private const val EDGE_SCROLL_PX_PER_TICK: Float = 16f
+
+/** Milliseconds between auto-scroll ticks. */
+private const val EDGE_SCROLL_TICK_MS: Long = 16L
+
+/** Elevation of the dragged row, so it reads as lifted off the list. */
+private const val DRAGGED_ROW_ELEVATION_DP: Int = 8
 
 /**
  * One row of the playlist detail's flattened list: an entry, or

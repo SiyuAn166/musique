@@ -18,7 +18,6 @@ import com.siyu.musique.data.GitHubUpdateChecker
 import com.siyu.musique.data.InMemoryAppCache
 import com.siyu.musique.data.InMemoryDownloadStore
 import com.siyu.musique.data.InMemoryPlaybackModeStore
-import com.siyu.musique.data.InMemoryPlaybackStateStore
 import com.siyu.musique.data.InMemoryPlaylistStore
 import com.siyu.musique.data.InMemoryQualityPreferenceStore
 import com.siyu.musique.data.InMemoryLanguagePreferenceStore
@@ -36,9 +35,7 @@ import com.siyu.musique.data.defaultUpdatesDir
 import com.siyu.musique.data.downloadFileName
 import com.siyu.musique.data.PlaybackMode
 import com.siyu.musique.data.PlaybackModeStore
-import com.siyu.musique.data.PlaybackStateStore
 import com.siyu.musique.data.PlaylistStore
-import com.siyu.musique.data.SavedPlayback
 import com.siyu.musique.data.QualityPreferenceStore
 import com.siyu.musique.data.LanguagePreference
 import com.siyu.musique.data.LanguagePreferenceStore
@@ -258,7 +255,6 @@ class SearchViewModel(
     private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     private val appCache: AppCache = InMemoryAppCache(),
-    private val playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
     private val downloadStore: DownloadStore = InMemoryDownloadStore(),
     private val audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
     private val downloadsDir: File = defaultDownloadsDir(),
@@ -424,7 +420,7 @@ class SearchViewModel(
 
     /**
      * The search query the current queue came from, or null when
-     * the queue came from a playlist, a restore, or nowhere yet.
+     * the queue came from a playlist or nowhere yet.
      * Only a queue with a matching origin grows when that
      * search loads another page.
      */
@@ -577,48 +573,6 @@ class SearchViewModel(
                 .onFailure {
                     logger.w(TAG, "playback mode load failed (${it::class.simpleName})")
                 }
-        }
-        viewModelScope.launch {
-            val restored = runCatching { playbackStateStore.load() }
-                .onFailure {
-                    logger.w(TAG, "playback state load failed (${it::class.simpleName})")
-                }
-                .getOrNull()
-            // Restore only when nothing has played yet: a tap
-            // that landed before this load finished wins, and a
-            // restore must never clobber it.
-            if (restored != null && _currentTrack.value == null && playIntent == 0) {
-                // The saved key may name a part ("bvid:cid") of a
-                // queue video instead of a queue member itself:
-                // the queue holds videos, while playback saves
-                // the part that was playing. A key whose video id
-                // matches a queue member restores that member
-                // with the saved part's cid; any other key
-                // restores nothing.
-                val current = restored.queue.firstOrNull { it.key == restored.currentKey }
-                    ?: restored.queue.firstOrNull {
-                        it.id == restored.currentKey.substringBefore(":")
-                    }?.let { member ->
-                        val savedCid = restored.currentKey.substringAfter(":", "")
-                        if (savedCid.isEmpty()) null else member.copy(cid = savedCid)
-                    }
-                if (current != null) {
-                    val duration = current.duration.inWholeMilliseconds.coerceAtLeast(0L)
-                    updateQueue(restored.queue)
-                    _currentTrack.value = current
-                    _playbackProgress.value = PlaybackProgress(
-                        restored.positionMs.coerceIn(0L, duration),
-                        duration,
-                    )
-                    _playerState.value = PlayerUiState.Paused
-                    _isPlaying.value = false
-                    logger.i(
-                        TAG,
-                        "playback restored key=${current.key} " +
-                            "positionMs=${_playbackProgress.value.positionMs}",
-                    )
-                }
-            }
         }
         viewModelScope.launch {
             val result = runCatching { playlistStore.load() }
@@ -934,8 +888,8 @@ class SearchViewModel(
      * Fetches [video]'s parts in the background and keeps them
      * when the same video is still current: part-aware navigation
      * and the queue sheet's tree rows need the parts even for
-     * tracks whose cid was already filled (downloads, restored
-     * playback), which never run the details call in [playAt].
+     * tracks whose cid was already filled (downloads), which
+     * never run the details call in [playAt].
      * Deduped by [partsKnownForVideoId]: same-video part switches
      * never refetch. A failure only logs.
      */
@@ -973,33 +927,12 @@ class SearchViewModel(
     /**
      * Play [track] without touching the queue: previous/next,
      * auto-advance, and playback retry keep moving inside the queue
-     * the current track came from. [startPositionMs] resumes into
-     * the track: the restore path passes the saved position.
+     * the current track came from. [startPositionMs] resumes
+     * into the track instead of starting at zero.
      */
     private fun playKeepingQueue(track: Track, startPositionMs: Long = 0L) {
         logger.i(TAG, "play intent=${playIntent + 1} bvid=${track.id} cid=${track.cid}")
         playAt(track, startPositionMs = startPositionMs, resumePlaying = true)
-    }
-
-    /**
-     * Saves the current queue, track, and position for the next
-     * launch. Best effort: a failure is logged and forgotten.
-     * Nothing is saved before the first play.
-     */
-    private fun persistPlaybackState() {
-        val current = _currentTrack.value ?: return
-        if (currentQueue.isEmpty()) return
-        val state = SavedPlayback(
-            queue = currentQueue,
-            currentKey = current.key,
-            positionMs = _playbackProgress.value.positionMs,
-        )
-        viewModelScope.launch {
-            runCatching { playbackStateStore.save(state) }
-                .onFailure {
-                    logger.w(TAG, "playback state save failed (${it::class.simpleName})")
-                }
-        }
     }
 
     /**
@@ -1035,8 +968,7 @@ class SearchViewModel(
     /**
      * Grows a search-adopted queue with a newly loaded search page.
      * Only when the queue came from this exact query: a playlist
-     * queue, a restored queue, or a queue from another query never
-     * grows. Tracks already in the queue (a re-run of the same
+     * queue, or a queue from another query never grows. Tracks already in the queue (a re-run of the same
      * query) are skipped, so the queue never holds a video twice.
      * The shuffle history is untouched: growing the queue only
      * adds candidates, it never invalidates what already played.
@@ -1061,8 +993,8 @@ class SearchViewModel(
      * the user never scrolls the search list. The load itself is
      * [loadMore], which no-ops while a load is in flight or no
      * pages remain, and the landed page extends the queue through
-     * [extendSearchQueue]. A no-op for playlist and restored
-     * queues, and when the search has moved on to another query.
+     * [extendSearchQueue]. A no-op for playlist queues, and
+     * when the search has moved on to another query.
      */
     private fun prefetchSearchQueueIfNeeded() {
         val origin = queueFromSearchQuery ?: return
@@ -1186,15 +1118,13 @@ class SearchViewModel(
                 // Parts for a cid-filled track were never learned
                 // above: fetch them in the background so
                 // part-aware navigation and the queue sheet's tree
-                // rows work for downloads and restored playback
-                // too. A no-op when the details call above
-                // already learned them.
+                // rows work for downloads too. A no-op when the
+                // details call above already learned them.
                 learnPartsForVideo(current)
                 if (startPositionMs > 0) {
                     playerEngine.seekTo(startPositionMs)
                     publishProgress()
                 }
-                persistPlaybackState()
                 if (!resumePlaying) {
                     playerEngine.pause()
                     _playerState.value = PlayerUiState.Paused
@@ -1235,7 +1165,6 @@ class SearchViewModel(
         }
         playerEngine.seekTo(clamped)
         _playbackProgress.value = PlaybackProgress(clamped, duration)
-        persistPlaybackState()
         logger.d(TAG, "player seek intent=$playIntent positionMs=$clamped")
     }
 
@@ -1327,7 +1256,6 @@ class SearchViewModel(
         publishProgress()
         _playerState.value = PlayerUiState.Paused
         _isPlaying.value = false
-        persistPlaybackState()
         logger.d(TAG, "player pause requested")
     }
 
@@ -1346,9 +1274,9 @@ class SearchViewModel(
             playerEngine.resume()
             logger.d(TAG, "player resume requested")
         } else {
-            // Paused before the engine ever got media (e.g.
-            // paused while fetching, or a restored track):
-            // replay the track at the shown position.
+            // Paused before the engine ever got media (paused
+            // while fetching): replay the track at the shown
+            // position.
             // Through playKeepingQueue, not play: the tap
             // guard in play would treat this as a re-tap
             // of the current track and do nothing.
@@ -1637,6 +1565,32 @@ class SearchViewModel(
         }
         _playlists.value = updated
         logger.i(TAG, "playlist remove count=$removed playlist=$playlistId")
+        persistPlaylists(updated)
+    }
+
+    /**
+     * Reorders the playlist with [playlistId] to the track order
+     * [orderedKeys] names, in a single update and a single
+     * persist: the detail screen's drag handle commits through
+     * here when a drag ends. An unknown playlist, or a key list
+     * that is not exactly the playlist's keys, is a no-op. The
+     * Downloads playlist is ignored here: its order comes from
+     * the download records, and reordering it by hand would be
+     * overwritten on the next load.
+     */
+    fun reorderPlaylistTracks(playlistId: String, orderedKeys: List<String>) {
+        if (playlistId == Playlist.DOWNLOADS_ID) {
+            logger.w(TAG, "playlist reorder rejected: downloads order comes from its records")
+            return
+        }
+        val target = _playlists.value.firstOrNull { it.id == playlistId } ?: return
+        val reordered = target.withTrackOrder(orderedKeys)
+        if (reordered.tracks == target.tracks) return
+        val updated = _playlists.value.map { playlist ->
+            if (playlist.id == playlistId) reordered else playlist
+        }
+        _playlists.value = updated
+        logger.i(TAG, "playlist reordered playlist=$playlistId trackCount=${reordered.tracks.size}")
         persistPlaylists(updated)
     }
 
@@ -2152,14 +2106,8 @@ class SearchViewModel(
     private fun startProgressPolling() {
         if (progressJob?.isActive == true) return
         progressJob = viewModelScope.launch {
-            var pollsSinceSave = 0
             while (true) {
                 publishProgress()
-                pollsSinceSave++
-                if (pollsSinceSave >= PROGRESS_POLLS_PER_SAVE) {
-                    pollsSinceSave = 0
-                    persistPlaybackState()
-                }
                 delay(PROGRESS_POLL_INTERVAL_MS)
             }
         }
@@ -2190,9 +2138,6 @@ class SearchViewModel(
 
         /** Progress polling cadence while playing. */
         const val PROGRESS_POLL_INTERVAL_MS: Long = 500L
-
-        /** Polls between playback-state saves while playing: 20 polls at 500ms is one save every 10 seconds, so a killed process still resumes near where it left off. */
-        private const val PROGRESS_POLLS_PER_SAVE: Int = 20
 
         /** Cap on the shuffle history, so endless skipping cannot grow it forever. */
         private const val SHUFFLE_HISTORY_LIMIT = 50
@@ -2248,7 +2193,7 @@ fun mapPlayerError(error: Throwable): PlaybackFailure {
     return PlaybackFailure.Resolve(kind, apiCode)
 }
 
-/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, the update checker, installer, and updates dir, and the quality, language, playlist, playback mode, playback state, and download stores into [SearchViewModel]. No DI framework in v0.1. */
+/** Factory carrying the repository, the player engine, the app cache, the downloader and downloads dir, the update checker, installer, and updates dir, and the quality, language, playlist, playback mode, and download stores into [SearchViewModel]. No DI framework in v0.1. */
 class SearchViewModelFactory(
     private val repository: SearchRepository,
     private val playerEngine: PlayerEngine = NoOpPlayerEngine,
@@ -2256,7 +2201,6 @@ class SearchViewModelFactory(
     private val playlistStore: PlaylistStore = InMemoryPlaylistStore(),
     private val playbackModeStore: PlaybackModeStore = InMemoryPlaybackModeStore(),
     private val appCache: AppCache = InMemoryAppCache(),
-    private val playbackStateStore: PlaybackStateStore = InMemoryPlaybackStateStore(),
     private val downloadStore: DownloadStore = InMemoryDownloadStore(),
     private val audioFileDownloader: AudioFileDownloader = NoOpAudioFileDownloader,
     private val downloadsDir: File = defaultDownloadsDir(),
@@ -2279,7 +2223,6 @@ class SearchViewModelFactory(
             playlistStore,
             playbackModeStore,
             appCache,
-            playbackStateStore,
             downloadStore,
             audioFileDownloader,
             downloadsDir,

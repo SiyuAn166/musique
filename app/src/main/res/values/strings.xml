@@ -7,6 +7,7 @@
     <string name="cancel">Cancel</string>
     <string name="create">Create</string>
     <string name="rename">Rename</string>
+    <string name="delete">Delete</string>
     <string name="close">Close</string>
     <string name="retry">Retry</string>
 
@@ -24,9 +25,13 @@
     <string name="downloads_playlist_name">Downloads</string>
     <string name="rename_playlist">Rename playlist</string>
     <string name="delete_playlist">Delete playlist</string>
-    <string name="remove_selected">Remove selected songs</string>
-    <string name="done_selecting">Done selecting</string>
-    <string name="select_songs">Select songs</string>
+    <string name="select_all">Select all</string>
+    <string name="deselect_all">Deselect all</string>
+    <string name="exit_selection">Exit selection</string>
+    <string name="delete_selected">Delete selected</string>
+    <string name="delete_songs_title">Delete songs</string>
+    <string name="delete_downloads_title">Delete downloads</string>
+    <string name="drag_to_reorder">Drag to reorder</string>
     <string name="playlist_not_found">Playlist not found.</string>
     <string name="empty_playlist">No songs yet. Add songs from search.</string>
 
@@ -73,6 +78,7 @@
     <!-- Settings -->
     <string name="settings_cache">Cache</string>
     <string name="clear_cache">Clear cache</string>
+    <string name="clear_cache_message">Clear all cached data?</string>
     <string name="settings_debug_log">Debug log</string>
     <string name="check_for_updates">Check for updates</string>
     <string name="settings_language">Language</string>
@@ -112,5 +118,17 @@
     <plurals name="lines_buffered">
         <item quantity="one">%1$d line buffered</item>
         <item quantity="other">%1$d lines buffered</item>
+    </plurals>
+    <plurals name="selected_songs">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="delete_songs_message">
+        <item quantity="one">Delete the selected song?</item>
+        <item quantity="other">Delete %1$d selected songs?</item>
+    </plurals>
+    <plurals name="delete_downloads_message">
+        <item quantity="one">Delete the selected song and its downloaded file?</item>
+        <item quantity="other">Delete %1$d selected songs and their downloaded files?</item>
     </plurals>
 </resources>

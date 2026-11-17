@@ -40,7 +40,8 @@ import com.siyu.musique.ui.theme.MusiqueIcons
  * Home tab: a "Playlists" header row with a plus icon to create
  * a playlist, and the playlist cards (the default playlist, the
  * Downloads playlist, then the user playlists, in that order). Tapping a
- * card opens its detail screen. No search field and no header
+ * card opens its detail screen; long-pressing a custom playlist
+ * opens its rename and delete menu. No search field and no header
  * buttons: search lives on its own tab, and settings lives on
  * its own tab too. The shared mini player bar and the tab bar
  * sit below this screen, owned by the app shell.
@@ -96,8 +97,9 @@ fun HomeScreen(
                 }
             }
             items(playlists, key = { playlist -> playlist.id }) { playlist ->
-                PlaylistRow(
+                PlaylistRowWithMenu(
                     playlist = playlist,
+                    viewModel = viewModel,
                     onClick = { onOpenPlaylistDetail(playlist.id) },
                 )
             }

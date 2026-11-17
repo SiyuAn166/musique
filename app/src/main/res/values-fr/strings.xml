@@ -7,6 +7,7 @@
     <string name="cancel">Annuler</string>
     <string name="create">Créer</string>
     <string name="rename">Renommer</string>
+    <string name="delete">Supprimer</string>
     <string name="close">Fermer</string>
     <string name="retry">Réessayer</string>
 
@@ -24,9 +25,13 @@
     <string name="downloads_playlist_name">Téléchargements</string>
     <string name="rename_playlist">Renommer la playlist</string>
     <string name="delete_playlist">Supprimer la playlist</string>
-    <string name="remove_selected">Supprimer les chansons sélectionnées</string>
-    <string name="done_selecting">Sélection terminée</string>
-    <string name="select_songs">Sélectionner des chansons</string>
+    <string name="select_all">Tout sélectionner</string>
+    <string name="deselect_all">Tout désélectionner</string>
+    <string name="exit_selection">Quitter la sélection</string>
+    <string name="delete_selected">Supprimer la sélection</string>
+    <string name="delete_songs_title">Supprimer les chansons</string>
+    <string name="delete_downloads_title">Supprimer les téléchargements</string>
+    <string name="drag_to_reorder">Glisser pour réorganiser</string>
     <string name="playlist_not_found">Playlist introuvable.</string>
     <string name="empty_playlist">Aucune chanson pour l’instant. Ajoutez-en depuis la recherche.</string>
 
@@ -73,6 +78,7 @@
     <!-- Settings -->
     <string name="settings_cache">Cache</string>
     <string name="clear_cache">Vider le cache</string>
+    <string name="clear_cache_message">Effacer toutes les données en cache ?</string>
     <string name="settings_debug_log">Journal de débogage</string>
     <string name="check_for_updates">Vérifier les mises à jour</string>
     <string name="settings_language">Langue</string>
@@ -112,5 +118,17 @@
     <plurals name="lines_buffered">
         <item quantity="one">%1$d ligne en mémoire</item>
         <item quantity="other">%1$d lignes en mémoire</item>
+    </plurals>
+    <plurals name="selected_songs">
+        <item quantity="one">%1$d sélectionnée</item>
+        <item quantity="other">%1$d sélectionnées</item>
+    </plurals>
+    <plurals name="delete_songs_message">
+        <item quantity="one">Supprimer la chanson sélectionnée ?</item>
+        <item quantity="other">Supprimer %1$d chansons sélectionnées ?</item>
+    </plurals>
+    <plurals name="delete_downloads_message">
+        <item quantity="one">Supprimer la chanson sélectionnée et son fichier téléchargé ?</item>
+        <item quantity="other">Supprimer %1$d chansons sélectionnées et leurs fichiers téléchargés ?</item>
     </plurals>
 </resources>

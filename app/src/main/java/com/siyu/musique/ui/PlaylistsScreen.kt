@@ -1,6 +1,7 @@
 package com.siyu.musique.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,11 +21,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -70,9 +75,12 @@ internal fun playlistDisplayName(playlist: Playlist): String = when {
  * plus icon button at the top right to create a new playlist, and
  * flat rows with a
  * small stacked-covers thumbnail, the playlist name, the song
- * count, and a chevron. Tapping a row opens the detail screen. The
- * default playlist always exists; creating a playlist asks for its
- * name in a dialog, and blank names are rejected.
+ * count, and a chevron. Tapping a row opens the detail screen.
+ * Long-pressing a custom playlist opens a menu with rename and
+ * delete; the default playlist and Downloads cannot be renamed
+ * or deleted, so no menu opens for them. The default playlist
+ * always exists; creating a playlist asks for its name in a
+ * dialog, and blank names are rejected.
  */
 @Composable
 fun PlaylistsScreen(
@@ -127,8 +135,9 @@ fun PlaylistsScreen(
 
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(playlists, key = { playlist -> playlist.id }) { playlist ->
-                PlaylistRow(
+                PlaylistRowWithMenu(
                     playlist = playlist,
+                    viewModel = viewModel,
                     onClick = { onOpenDetail(playlist.id) },
                 )
             }
@@ -177,22 +186,146 @@ fun PlaylistsScreen(
 }
 
 /**
+ * A playlist row with its long-press menu: a custom playlist
+ * offers rename and delete, the default playlist and Downloads
+ * offer nothing and never show a menu. Shared by the home
+ * playlists section and the Playlists screen.
+ */
+@Composable
+internal fun PlaylistRowWithMenu(
+    playlist: Playlist,
+    viewModel: SearchViewModel,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    val editable = !playlist.isDefault && !playlist.isDownloads
+    Box(modifier = modifier) {
+        PlaylistRow(
+            playlist = playlist,
+            onClick = onClick,
+            onLongClick = if (editable) {
+                { showMenu = true }
+            } else {
+                null
+            },
+        )
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.rename)) },
+                onClick = {
+                    showMenu = false
+                    showRenameDialog = true
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.delete)) },
+                onClick = {
+                    showMenu = false
+                    viewModel.deletePlaylist(playlist.id)
+                },
+            )
+        }
+    }
+    if (showRenameDialog) {
+        RenamePlaylistDialog(
+            initialName = playlist.name,
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { name ->
+                viewModel.renamePlaylist(playlist.id, name)
+                showRenameDialog = false
+            },
+        )
+    }
+}
+
+/**
+ * The rename dialog, from the playlist list's long-press menu.
+ * Mirrors the create-playlist dialog: the field starts with the
+ * current name, blank names are rejected, duplicate names are
+ * allowed.
+ */
+@Composable
+internal fun RenamePlaylistDialog(
+    initialName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(36.dp),
+        title = { Text(stringResource(R.string.rename_playlist)) },
+        text = {
+            TextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = { Text(stringResource(R.string.playlist_name_hint)) },
+                singleLine = true,
+                shape = RoundedCornerShape(50.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                    cursorColor = MaterialTheme.colorScheme.onSurface,
+                    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            IconButton(
+                enabled = name.isNotBlank(),
+                onClick = { onConfirm(name) },
+            ) {
+                Icon(
+                    imageVector = MusiqueIcons.Check,
+                    contentDescription = stringResource(R.string.rename),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        },
+        dismissButton = {
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = MusiqueIcons.Clear,
+                    contentDescription = stringResource(R.string.cancel),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        },
+    )
+}
+
+/**
  * One playlist as a card: a light-grey card with a single square
  * cover, the name, and the song count. Tapping the card opens the
  * playlist. Shared by the home playlists section and the Playlists
- * screen.
+ * screen. [onLongClick] is null for rows with no long-press
+ * action; the list's menu rows pass one that opens the menu.
  */
 @Composable
 internal fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Card(
-        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,

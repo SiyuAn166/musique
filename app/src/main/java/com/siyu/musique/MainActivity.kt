@@ -53,7 +53,6 @@ class MainActivity : ComponentActivity() {
             BiliDependencies.createLanguagePreferenceStore(applicationContext)
         val playlistStore = BiliDependencies.createPlaylistStore(applicationContext)
         val playbackModeStore = BiliDependencies.createPlaybackModeStore(applicationContext)
-        val playbackStateStore = BiliDependencies.createPlaybackStateStore(applicationContext)
         val downloadStore = BiliDependencies.createDownloadStore(applicationContext)
         val audioFileDownloader = BiliDependencies.createAudioFileDownloader()
         val downloadsDir = BiliDependencies.downloadsDir(applicationContext)
@@ -70,7 +69,6 @@ class MainActivity : ComponentActivity() {
                 languagePreferenceStore = languagePreferenceStore,
                 playlistStore = playlistStore,
                 playbackModeStore = playbackModeStore,
-                playbackStateStore = playbackStateStore,
                 downloadStore = downloadStore,
                 audioFileDownloader = audioFileDownloader,
                 downloadsDir = downloadsDir,

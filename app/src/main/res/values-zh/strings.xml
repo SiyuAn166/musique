@@ -7,6 +7,7 @@
     <string name="cancel">取消</string>
     <string name="create">创建</string>
     <string name="rename">重命名</string>
+    <string name="delete">删除</string>
     <string name="close">关闭</string>
     <string name="retry">重试</string>
 
@@ -24,9 +25,13 @@
     <string name="downloads_playlist_name">下载</string>
     <string name="rename_playlist">重命名歌单</string>
     <string name="delete_playlist">删除歌单</string>
-    <string name="remove_selected">移除所选歌曲</string>
-    <string name="done_selecting">完成选择</string>
-    <string name="select_songs">选择歌曲</string>
+    <string name="select_all">全选</string>
+    <string name="deselect_all">取消全选</string>
+    <string name="exit_selection">退出多选</string>
+    <string name="delete_selected">删除选中</string>
+    <string name="delete_songs_title">删除歌曲</string>
+    <string name="delete_downloads_title">删除下载</string>
+    <string name="drag_to_reorder">拖动排序</string>
     <string name="playlist_not_found">找不到该歌单。</string>
     <string name="empty_playlist">还没有歌曲。从搜索中添加吧。</string>
 
@@ -73,6 +78,7 @@
     <!-- Settings -->
     <string name="settings_cache">缓存</string>
     <string name="clear_cache">清除缓存</string>
+    <string name="clear_cache_message">清除全部缓存？</string>
     <string name="settings_debug_log">调试日志</string>
     <string name="check_for_updates">检查更新</string>
     <string name="settings_language">语言</string>
@@ -110,5 +116,14 @@
     </plurals>
     <plurals name="lines_buffered">
         <item quantity="other">已缓存 %1$d 行</item>
+    </plurals>
+    <plurals name="selected_songs">
+        <item quantity="other">已选择 %1$d 首</item>
+    </plurals>
+    <plurals name="delete_songs_message">
+        <item quantity="other">删除选中的 %1$d 首歌？</item>
+    </plurals>
+    <plurals name="delete_downloads_message">
+        <item quantity="other">删除选中的 %1$d 首歌和下载文件？</item>
     </plurals>
 </resources>

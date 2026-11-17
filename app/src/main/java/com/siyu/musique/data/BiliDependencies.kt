@@ -95,10 +95,6 @@ object BiliDependencies {
     fun createPlaybackModeStore(context: Context): PlaybackModeStore =
         DataStorePlaybackModeStore(context.applicationContext)
 
-    /** The persisted playback state (queue, track, position), restored by the ViewModel at startup. */
-    fun createPlaybackStateStore(context: Context): PlaybackStateStore =
-        DataStorePlaybackStateStore(context.applicationContext)
-
     /** The persisted download records, read by the ViewModel at startup. */
     fun createDownloadStore(context: Context): DownloadStore =
         DataStoreDownloadStore(context.applicationContext)

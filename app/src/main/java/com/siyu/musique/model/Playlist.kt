@@ -69,4 +69,45 @@ data class Playlist(
         fun create(name: String): Playlist =
             Playlist(id = UUID.randomUUID().toString(), name = name, tracks = emptyList())
     }
+
+    /**
+     * This playlist with the track at [fromIndex] moved to
+     * [toIndex], shifting the tracks between them. Out-of-range
+     * indices and a move onto itself return this playlist
+     * unchanged.
+     */
+    fun withTrackMoved(fromIndex: Int, toIndex: Int): Playlist {
+        if (fromIndex == toIndex) return this
+        if (fromIndex !in tracks.indices || toIndex !in tracks.indices) return this
+        return copy(tracks = tracks.moved(fromIndex, toIndex))
+    }
+
+    /**
+     * This playlist with its tracks in the order [orderedKeys]
+     * names. The keys must be exactly this playlist's track keys,
+     * each once: any other list (a missing key, an unknown key, a
+     * duplicate) returns this playlist unchanged, so a stale drag
+     * can never drop or duplicate a song.
+     */
+    fun withTrackOrder(orderedKeys: List<String>): Playlist {
+        if (orderedKeys.size != tracks.size) return this
+        if (orderedKeys.toSet().size != orderedKeys.size) return this
+        val byKey = tracks.associateBy { it.key }
+        if (orderedKeys.any { it !in byKey }) return this
+        return copy(tracks = orderedKeys.map { byKey.getValue(it) })
+    }
+}
+
+/**
+ * This list with the element at [fromIndex] moved to [toIndex],
+ * shifting the elements between them. Out-of-range indices and a
+ * move onto itself return this list unchanged.
+ */
+internal fun <T> List<T>.moved(fromIndex: Int, toIndex: Int): List<T> {
+    if (fromIndex == toIndex) return this
+    if (fromIndex !in indices || toIndex !in indices) return this
+    val mutable = toMutableList()
+    val element = mutable.removeAt(fromIndex)
+    mutable.add(toIndex, element)
+    return mutable
 }
