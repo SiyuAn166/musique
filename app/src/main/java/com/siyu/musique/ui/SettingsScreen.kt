@@ -178,6 +178,10 @@ fun SettingsScreen(
                 text = cacheSizeBytes?.let { formatCacheSize(it) } ?: "…",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // Never wrap or cut the number: the label and the
+                // spacer absorb the slack, this text takes what it
+                // needs on one line.
+                softWrap = false,
             )
             IconButton(
                 onClick = { viewModel.clearCache() },
@@ -468,9 +472,10 @@ private fun languageOptionLabel(preference: LanguagePreference): String = when (
     LanguagePreference.FRENCH -> "Français"
 }
 
-/** Human cache size: bytes, KB, or MB with one decimal. */
+/** Human cache size: bytes, KB, MB, or GB with one decimal. The GB tier keeps large caches short: without it a multi-gigabyte cache printed a long MB number that ran out of room on the row. */
 private fun formatCacheSize(bytes: Long): String = when {
     bytes < 1024L -> "$bytes B"
     bytes < 1024L * 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
-    else -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+    bytes < 1024L * 1024L * 1024L -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+    else -> String.format(Locale.US, "%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0))
 }

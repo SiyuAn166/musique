@@ -24,7 +24,13 @@ class AndroidAppCache(
     private val appContext: Context = context.applicationContext
 
     override suspend fun sizeBytes(): Long = withContext(Dispatchers.IO) {
-        audioCache.cacheSpace + (appContext.imageLoader.diskCache?.size ?: 0L)
+        // Each cache is read defensively: one unreadable cache
+        // must not blank the whole number (the row shows "…"
+        // while the size is unknown, so a failure here used to
+        // leave three dots on screen with no number at all).
+        val audio = runCatching { audioCache.cacheSpace }.getOrDefault(0L)
+        val covers = runCatching { appContext.imageLoader.diskCache?.size ?: 0L }.getOrDefault(0L)
+        audio + covers
     }
 
     override suspend fun clear() {
