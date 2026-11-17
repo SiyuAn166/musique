@@ -25,6 +25,7 @@
     <string name="downloads_playlist_name">Téléchargements</string>
     <string name="rename_playlist">Renommer la playlist</string>
     <string name="delete_playlist">Supprimer la playlist</string>
+    <string name="delete_playlist_message">Supprimer "%1$s" ? Les chansons téléchargées sont conservées.</string>
     <string name="select_all">Tout sélectionner</string>
     <string name="deselect_all">Tout désélectionner</string>
     <string name="exit_selection">Quitter la sélection</string>

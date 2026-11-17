@@ -1,7 +1,11 @@
 package com.siyu.musique.ui
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,11 +41,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -185,10 +195,16 @@ fun PlaylistsScreen(
     }
 }
 
+/** The playlist card's outer padding, shared by the card and the menu anchor math. */
+private const val PLAYLIST_ROW_HORIZONTAL_PADDING_DP = 16
+private const val PLAYLIST_ROW_VERTICAL_PADDING_DP = 4
+
 /**
  * A playlist row with its long-press menu: a custom playlist
  * offers rename and delete, the default playlist and Downloads
- * offer nothing and never show a menu. Shared by the home
+ * offer nothing and never show a menu. The menu opens at the
+ * press position instead of the row's left edge, and deleting
+ * asks first through a confirmation dialog. Shared by the home
  * playlists section and the Playlists screen.
  */
 @Composable
@@ -199,14 +215,31 @@ internal fun PlaylistRowWithMenu(
     modifier: Modifier = Modifier,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var menuOffset by remember { mutableStateOf(DpOffset.Zero) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
     val editable = !playlist.isDefault && !playlist.isDownloads
     Box(modifier = modifier) {
         PlaylistRow(
             playlist = playlist,
             onClick = onClick,
             onLongClick = if (editable) {
-                { showMenu = true }
+                { pressOffset ->
+                    // The press position is relative to the
+                    // card itself; the menu anchors to the
+                    // surrounding box, so add the card's outer
+                    // padding back in.
+                    menuOffset = with(density) {
+                        DpOffset(
+                            pressOffset.x.toDp() +
+                                PLAYLIST_ROW_HORIZONTAL_PADDING_DP.dp,
+                            pressOffset.y.toDp() +
+                                PLAYLIST_ROW_VERTICAL_PADDING_DP.dp,
+                        )
+                    }
+                    showMenu = true
+                }
             } else {
                 null
             },
@@ -214,6 +247,7 @@ internal fun PlaylistRowWithMenu(
         DropdownMenu(
             expanded = showMenu,
             onDismissRequest = { showMenu = false },
+            offset = menuOffset,
         ) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.rename)) },
@@ -226,7 +260,7 @@ internal fun PlaylistRowWithMenu(
                 text = { Text(stringResource(R.string.delete)) },
                 onClick = {
                     showMenu = false
-                    viewModel.deletePlaylist(playlist.id)
+                    showDeleteDialog = true
                 },
             )
         }
@@ -238,6 +272,45 @@ internal fun PlaylistRowWithMenu(
             onConfirm = { name ->
                 viewModel.renamePlaylist(playlist.id, name)
                 showRenameDialog = false
+            },
+        )
+    }
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(36.dp),
+            title = { Text(stringResource(R.string.delete_playlist)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.delete_playlist_message,
+                        playlistDisplayName(playlist),
+                    ),
+                )
+            },
+            confirmButton = {
+                IconButton(
+                    onClick = {
+                        viewModel.deletePlaylist(playlist.id)
+                        showDeleteDialog = false
+                    },
+                ) {
+                    Icon(
+                        imageVector = MusiqueIcons.Check,
+                        contentDescription = stringResource(R.string.delete),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            },
+            dismissButton = {
+                IconButton(onClick = { showDeleteDialog = false }) {
+                    Icon(
+                        imageVector = MusiqueIcons.Clear,
+                        contentDescription = stringResource(R.string.cancel),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             },
         )
     }
@@ -311,21 +384,48 @@ internal fun RenamePlaylistDialog(
  * cover, the name, and the song count. Tapping the card opens the
  * playlist. Shared by the home playlists section and the Playlists
  * screen. [onLongClick] is null for rows with no long-press
- * action; the list's menu rows pass one that opens the menu.
+ * action; the list's menu rows pass one that opens the menu at
+ * the press position. The gestures run through [detectTapGestures]
+ * instead of combinedClickable so the long press reports where
+ * the finger landed; the press ripple and the long-press haptic
+ * are wired back in by hand.
  */
 @Composable
 internal fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
+    onLongClick: ((Offset) -> Unit)? = null,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val haptics = LocalHapticFeedback.current
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(
+                horizontal = PLAYLIST_ROW_HORIZONTAL_PADDING_DP.dp,
+                vertical = PLAYLIST_ROW_VERTICAL_PADDING_DP.dp,
+            )
             .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .indication(interactionSource, LocalIndication.current)
+            .pointerInput(onClick, onLongClick) {
+                detectTapGestures(
+                    onPress = { pressOffset ->
+                        val press = PressInteraction.Press(pressOffset)
+                        interactionSource.emit(press)
+                        if (tryAwaitRelease()) {
+                            interactionSource.emit(PressInteraction.Release(press))
+                        } else {
+                            interactionSource.emit(PressInteraction.Cancel(press))
+                        }
+                    },
+                    onTap = { onClick() },
+                    onLongPress = { pressOffset ->
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongClick?.invoke(pressOffset)
+                    },
+                )
+            },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,

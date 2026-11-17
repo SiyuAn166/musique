@@ -25,6 +25,7 @@
     <string name="downloads_playlist_name">Downloads</string>
     <string name="rename_playlist">Rename playlist</string>
     <string name="delete_playlist">Delete playlist</string>
+    <string name="delete_playlist_message">Delete "%1$s"? Downloaded songs are kept.</string>
     <string name="select_all">Select all</string>
     <string name="deselect_all">Deselect all</string>
     <string name="exit_selection">Exit selection</string>
