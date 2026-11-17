@@ -182,6 +182,13 @@ fun PlayerScreen(
 
     val track = currentTrack
 
+    // A drag belongs to the track it started on: switching tracks
+    // mid-drag drops it, so releasing the slider never seeks the
+    // new track to the old track's dragged position.
+    LaunchedEffect(track?.key) {
+        dragPositionMs = null
+    }
+
     // The close callback as seen by the drag detector: reading
     // it through updated state keeps the gesture block from
     // restarting when the parent recomposes mid-drag.
@@ -676,11 +683,7 @@ fun PlayerScreen(
                     buildList {
                         for (row in queue) {
                             add(QueueSheetRow.Video(row))
-                            if (row.cid.isEmpty() &&
-                                row.id == track?.id &&
-                                currentParts.size > 1 &&
-                                partsExpanded
-                            ) {
+                            if (queueRowShowsParts(row, track, currentParts, partsExpanded)) {
                                 for (part in currentParts) {
                                     add(QueueSheetRow.Part(part))
                                 }
@@ -689,26 +692,47 @@ fun PlayerScreen(
                     }
                 }
                 val queueListState = rememberLazyListState()
+                // Whether the open-time scroll landed on the exact
+                // part row: when the parts were still loading at
+                // open time it lands on the video row instead, and
+                // the parts effect below scrolls once more when
+                // they arrive. Never again after that: switching
+                // tracks while the sheet stays open must not yank
+                // the list out from under the user.
+                var scrolledToPartRow by remember { mutableStateOf(false) }
                 // Opening the sheet jumps straight to the playing
                 // track instead of starting at the top of the
                 // queue: the exact part row when it is known,
-                // else the playing video's row. Only on open:
-                // switching tracks while the sheet stays open
-                // must not yank the list out from under the user.
+                // else the playing video's row.
                 LaunchedEffect(Unit) {
                     val partIndex = sheetRows.indexOfFirst { row ->
                         row is QueueSheetRow.Part && row.track.key == track?.key
                     }
-                    val currentIndex = if (partIndex >= 0) {
-                        partIndex
+                    if (partIndex >= 0) {
+                        scrolledToPartRow = true
+                        // +1: the "Queue" header is the first item.
+                        queueListState.scrollToItem(partIndex + 1)
                     } else {
-                        sheetRows.indexOfFirst { row ->
+                        val currentIndex = sheetRows.indexOfFirst { row ->
                             row is QueueSheetRow.Video && row.track.id == track?.id
                         }
+                        if (currentIndex >= 0) {
+                            queueListState.scrollToItem(currentIndex + 1)
+                        }
                     }
-                    if (currentIndex >= 0) {
-                        // +1: the "Queue" header is the first item.
-                        queueListState.scrollToItem(currentIndex + 1)
+                }
+                // The parts may land after the sheet opens (the
+                // open-time learn runs in the background): scroll
+                // once to the exact part row when they do, unless
+                // the open-time scroll already got there.
+                LaunchedEffect(currentParts) {
+                    if (scrolledToPartRow) return@LaunchedEffect
+                    val partIndex = sheetRows.indexOfFirst { row ->
+                        row is QueueSheetRow.Part && row.track.key == track?.key
+                    }
+                    if (partIndex >= 0) {
+                        scrolledToPartRow = true
+                        queueListState.scrollToItem(partIndex + 1)
                     }
                 }
                 LazyColumn(
@@ -734,16 +758,17 @@ fun PlayerScreen(
                     ) { index, sheetRow ->
                         when (sheetRow) {
                             is QueueSheetRow.Video -> {
-                                // Only the playing video has known
-                                // parts, and only a whole-video row
-                                // toggles them, with a chevron showing
-                                // the state. A row that names a
+                                // Only the playing video's whole-video
+                                // row toggles its parts, with a chevron
+                                // showing the state. A row that names a
                                 // specific part is that song: it plays
                                 // on tap instead of expanding. Every
                                 // other row plays on tap.
-                                val hasParts = sheetRow.track.cid.isEmpty() &&
-                                    sheetRow.track.id == track?.id &&
-                                    currentParts.size > 1
+                                val hasParts = decideQueueRowTap(
+                                    sheetRow.track,
+                                    track,
+                                    currentParts,
+                                ) == QueueRowTapDecision.ToggleParts
                                 SongRow(
                                     track = sheetRow.track,
                                     // Whole-video rows match by video
@@ -752,20 +777,25 @@ fun PlayerScreen(
                                     // row that names a specific part
                                     // matches by key, so it only lights
                                     // up when that part itself plays.
-                                    isCurrent = if (sheetRow.track.cid.isEmpty()) {
-                                        sheetRow.track.id == track?.id
-                                    } else {
-                                        sheetRow.track.key == track?.key
-                                    },
+                                    isCurrent = isCurrentListRow(sheetRow.track, track),
                                     onClick = {
-                                        if (hasParts) {
-                                            partsExpanded = !partsExpanded
-                                        } else {
-                                            // The sheet stays open:
-                                            // switching songs from the
-                                            // queue must not drop back
-                                            // to the player page.
-                                            viewModel.playFromQueue(sheetRow.track)
+                                        when (
+                                            decideQueueRowTap(
+                                                sheetRow.track,
+                                                track,
+                                                currentParts,
+                                            )
+                                        ) {
+                                            QueueRowTapDecision.ToggleParts -> {
+                                                partsExpanded = !partsExpanded
+                                            }
+                                            QueueRowTapDecision.Play -> {
+                                                // The sheet stays open:
+                                                // switching songs from the
+                                                // queue must not drop back
+                                                // to the player page.
+                                                viewModel.playFromQueue(sheetRow.track)
+                                            }
                                         }
                                     },
                                     trailing = {
@@ -790,7 +820,7 @@ fun PlayerScreen(
 
                             is QueueSheetRow.Part -> SongRow(
                                 track = sheetRow.track,
-                                isCurrent = sheetRow.track.key == track?.key,
+                                isCurrent = isCurrentListRow(sheetRow.track, track),
                                 onClick = {
                                     // The sheet stays open, same as
                                     // the video rows above.

@@ -121,15 +121,21 @@ fun SearchScreen(
     // a collection expands, a single video plays. The parts are
     // fetched once and cached, so later taps expand, collapse,
     // and play without another lookup. A failed load leaves the
-    // tap pending until another tap supersedes or retries it.
-    LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds) {
+    // tap pending until another tap supersedes or retries it. A
+    // tap whose video left the results (the search moved on
+    // while the load ran) drops instead of playing a stale song.
+    LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds, searchState) {
         val pending = pendingTapTrack ?: return@LaunchedEffect
         val parts = videoParts[pending.id] ?: return@LaunchedEffect
         pendingTapTrack = null
-        if (parts.size > 1) {
-            expandedVideoIds = expandedVideoIds + pending.id
-        } else {
-            viewModel.play(pending)
+        val success = searchState as? SearchUiState.Success
+        val stillPresent = success?.tracks?.any { it.id == pending.id } == true
+        when (resolvePendingListRowTap(pending, parts, selecting = false, stillPresent)) {
+            PendingTapDecision.Expand -> {
+                expandedVideoIds = expandedVideoIds + pending.id
+            }
+            PendingTapDecision.Play -> viewModel.play(pending)
+            PendingTapDecision.Drop -> Unit
         }
     }
     var queryField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -384,8 +390,12 @@ fun SearchScreen(
                         state.tracks.forEach { track ->
                             add(SearchListRow.Video(track))
                             val parts = videoParts[track.id]
-                            if (track.id in expandedVideoIds &&
-                                parts != null && parts.size > 1
+                            if (parts != null &&
+                                listRowShowsParts(
+                                    track,
+                                    parts,
+                                    track.id in expandedVideoIds,
+                                )
                             ) {
                                 parts.forEach { add(SearchListRow.Part(it)) }
                             }
@@ -405,7 +415,7 @@ fun SearchScreen(
                                     track = track,
                                     // Rows are videos: stay highlighted while any
                                     // part of the video plays, not just part one.
-                                    isCurrent = track.id == currentTrack?.id,
+                                    isCurrent = isCurrentListRow(track, currentTrack),
                                     // A parts lookup in flight dims the cover
                                     // under a spinner instead of a frozen row.
                                     loading = track.id in partsLoadingIds,
@@ -414,17 +424,22 @@ fun SearchScreen(
                                     // load first; the pending tap above
                                     // decides once they land.
                                     onClick = {
-                                        val known = videoParts[track.id]
-                                        when {
-                                            known != null && known.size > 1 -> {
+                                        when (
+                                            decideListRowTap(
+                                                track,
+                                                videoParts[track.id],
+                                                expanded,
+                                            )
+                                        ) {
+                                            RowTapDecision.ToggleExpansion -> {
                                                 expandedVideoIds = if (expanded) {
                                                     expandedVideoIds - track.id
                                                 } else {
                                                     expandedVideoIds + track.id
                                                 }
                                             }
-                                            known != null -> viewModel.play(track)
-                                            else -> {
+                                            RowTapDecision.Play -> viewModel.play(track)
+                                            RowTapDecision.LoadParts -> {
                                                 pendingTapTrack = track
                                                 viewModel.loadVideoParts(track)
                                             }
@@ -446,7 +461,7 @@ fun SearchScreen(
                                 // add button adds just this part.
                                 SongRow(
                                     track = listRow.track,
-                                    isCurrent = listRow.track.key == currentTrack?.key,
+                                    isCurrent = isCurrentListRow(listRow.track, currentTrack),
                                     onClick = { viewModel.play(listRow.track) },
                                     trailing = {
                                         IconButton(onClick = { chooserTrack = listRow.track }) {

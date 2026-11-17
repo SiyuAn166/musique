@@ -461,6 +461,33 @@ class DownloadViewModelTest {
         }
 
     @Test
+    fun `play picks the Hi-Res file over the 192K file when both are downloaded`() =
+        runTest(testDispatcher) {
+            val track = track("BV1a", "111")
+            val hires = record(track, 30251)
+            val high = record(track, 30280)
+            seedFile(hires)
+            seedFile(high)
+            val engine = FakePlayerEngine()
+            val vm = viewModel(
+                engine,
+                DownloadRepository(),
+                InMemoryDownloadStore(listOf(high, hires)),
+                WritingDownloader(),
+            )
+            advanceUntilIdle()
+
+            vm.play(track)
+            advanceUntilIdle()
+
+            // The ids do not sort by quality: Hi-Res 30251 sits
+            // below 192K 30280 numerically, so a raw max would
+            // pick the wrong file.
+            assertTrue(engine.playCalls.single().first.endsWith("BV1a_111_30251.m4a"))
+            assertEquals("Hi-Res", vm.resolvedQualityLabel.value)
+        }
+
+    @Test
     fun `play falls back to the network when nothing is downloaded`() =
         runTest(testDispatcher) {
             val track = track("BV1a", "111")

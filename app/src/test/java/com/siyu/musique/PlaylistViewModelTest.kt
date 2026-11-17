@@ -370,25 +370,25 @@ class PlaylistViewModelTest {
     }
 
     @Test
-    fun `addTrackToPlaylist rejects the same video once its cid is filled in`() =
+    fun `addTrackToPlaylist keeps a collection and one of its parts`() =
         runTest(testDispatcher) {
             val vm = viewModel()
             advanceUntilIdle()
             assertTrue(
                 vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00001", cid = "")),
             )
-            assertFalse(
+            assertTrue(
                 vm.addTrackToPlaylist(
                     Playlist.DEFAULT_ID,
                     track("BV1DUP00001", cid = "28139389900"),
                 ),
             )
             advanceUntilIdle()
-            assertEquals(1, vm.playlists.value.first { it.isDefault }.tracks.size)
+            assertEquals(2, vm.playlists.value.first { it.isDefault }.tracks.size)
         }
 
     @Test
-    fun `addTrackToPlaylist rejects an empty-cid add after a filled-cid add`() =
+    fun `addTrackToPlaylist keeps a part and its collection`() =
         runTest(testDispatcher) {
             val vm = viewModel()
             advanceUntilIdle()
@@ -398,11 +398,11 @@ class PlaylistViewModelTest {
                     track("BV1DUP00002", cid = "28139389900"),
                 ),
             )
-            assertFalse(
+            assertTrue(
                 vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1DUP00002", cid = "")),
             )
             advanceUntilIdle()
-            assertEquals(1, vm.playlists.value.first { it.isDefault }.tracks.size)
+            assertEquals(2, vm.playlists.value.first { it.isDefault }.tracks.size)
         }
 
     @Test

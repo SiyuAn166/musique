@@ -151,23 +151,28 @@ fun PlaylistDetailScreen(
     }
 
     // A row tap on an entry with unknown parts waits for the
-    // load: a collection expands, a single video plays (unless
-    // selection mode took over meanwhile, which drops the tap).
-    // An entry that names a specific part never waits: it plays
-    // directly. The parts are fetched once and cached, so later
-    // taps expand, collapse, and play without another lookup. A
-    // failed load leaves the tap pending until another tap
-    // supersedes or retries it.
+    // load: a collection expands, a single video plays, unless
+    // selection mode took over meanwhile or the entry left the
+    // playlist, which drops the tap. An entry that names a
+    // specific part never waits: it plays directly. The parts
+    // are fetched once and cached, so later taps expand,
+    // collapse, and play without another lookup. A failed load
+    // leaves the tap pending until another tap supersedes or
+    // retries it.
     LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds, selecting, playlists) {
         val pending = pendingTapTrack ?: return@LaunchedEffect
         val parts = videoParts[pending.id] ?: return@LaunchedEffect
         pendingTapTrack = null
-        if (parts.size > 1 && pending.cid.isEmpty()) {
-            expandedVideoIds = expandedVideoIds + pending.id
-        } else if (!selecting) {
-            val current = playlists.firstOrNull { it.id == playlistId }
-                ?: return@LaunchedEffect
-            viewModel.playFromPlaylist(pending, current)
+        val current = playlists.firstOrNull { it.id == playlistId }
+        val stillPresent = current?.tracks?.any { it.key == pending.key } == true
+        when (resolvePendingListRowTap(pending, parts, selecting, stillPresent)) {
+            PendingTapDecision.Expand -> {
+                expandedVideoIds = expandedVideoIds + pending.id
+            }
+            PendingTapDecision.Play -> {
+                current?.let { viewModel.playFromPlaylist(pending, it) }
+            }
+            PendingTapDecision.Drop -> Unit
         }
     }
 
@@ -280,9 +285,12 @@ fun PlaylistDetailScreen(
                             displayTracks.forEach { track ->
                                 add(DetailListRow.Video(track))
                                 val parts = videoParts[track.id]
-                                if (!selecting && track.id in expandedVideoIds &&
-                                    track.cid.isEmpty() &&
-                                    parts != null && parts.size > 1
+                                if (!selecting && parts != null &&
+                                    listRowShowsParts(
+                                        track,
+                                        parts,
+                                        track.id in expandedVideoIds,
+                                    )
                                 ) {
                                     parts.forEach { add(DetailListRow.Part(it)) }
                                 }
@@ -310,11 +318,7 @@ fun PlaylistDetailScreen(
                                         // details. A row that names a specific
                                         // part matches by key, so it only lights
                                         // up when that part itself is playing.
-                                        isCurrent = if (track.cid.isEmpty()) {
-                                            track.id == currentTrack?.id
-                                        } else {
-                                            track.key == currentTrack?.key
-                                        },
+                                        isCurrent = isCurrentListRow(track, currentTrack),
                                         // A parts lookup in flight dims the cover
                                         // under a spinner instead of a frozen row.
                                         loading = track.id in partsLoadingIds,
@@ -366,22 +370,24 @@ fun PlaylistDetailScreen(
                                                 // entry that names a specific part
                                                 // plays that part at once: it is a
                                                 // song, not the collection.
-                                                val known = videoParts[track.id]
-                                                when {
-                                                    track.cid.isNotEmpty() -> {
-                                                        viewModel.playFromPlaylist(track, playlist)
-                                                    }
-                                                    known != null && known.size > 1 -> {
+                                                when (
+                                                    decideListRowTap(
+                                                        track,
+                                                        videoParts[track.id],
+                                                        expanded,
+                                                    )
+                                                ) {
+                                                    RowTapDecision.ToggleExpansion -> {
                                                         expandedVideoIds = if (expanded) {
                                                             expandedVideoIds - track.id
                                                         } else {
                                                             expandedVideoIds + track.id
                                                         }
                                                     }
-                                                    known != null -> {
+                                                    RowTapDecision.Play -> {
                                                         viewModel.playFromPlaylist(track, playlist)
                                                     }
-                                                    else -> {
+                                                    RowTapDecision.LoadParts -> {
                                                         pendingTapTrack = track
                                                         viewModel.loadVideoParts(track)
                                                     }
@@ -474,7 +480,7 @@ fun PlaylistDetailScreen(
                                     // the playlist as the queue.
                                     SongRow(
                                         track = listRow.track,
-                                        isCurrent = listRow.track.key == currentTrack?.key,
+                                        isCurrent = isCurrentListRow(listRow.track, currentTrack),
                                         onClick = {
                                             viewModel.playFromPlaylist(listRow.track, playlist)
                                         },

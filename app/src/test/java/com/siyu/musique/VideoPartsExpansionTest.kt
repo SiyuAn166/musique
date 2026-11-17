@@ -280,7 +280,7 @@ class VideoPartsExpansionTest {
     }
 
     @Test
-    fun `a single-part video keeps the old duplicate rule after its parts load`() =
+    fun `a single-part video keeps a collection entry and a part entry as separate entries`() =
         runTest(testDispatcher) {
             val parts = listOf(track("BV1SINGLE", "7"))
             val vm = viewModel(PartsRepository(mapOf("BV1SINGLE" to parts)))
@@ -291,10 +291,16 @@ class VideoPartsExpansionTest {
             )
             vm.loadVideoParts(track("BV1SINGLE", cid = ""))
             advanceUntilIdle()
-            assertFalse(
+            // The dedupe rule is the key alone and never consults
+            // the parts cache, so the answer is the same before
+            // and after the load. A part row for a single-part
+            // video never appears in the UI, so the two entries
+            // cannot both be added by hand; the rule stays
+            // consistent with the load-time dedupe either way.
+            assertTrue(
                 vm.addTrackToPlaylist(Playlist.DEFAULT_ID, track("BV1SINGLE", cid = "7")),
             )
             advanceUntilIdle()
-            assertEquals(1, defaultTracks(vm).size)
+            assertEquals(2, defaultTracks(vm).size)
         }
 }
