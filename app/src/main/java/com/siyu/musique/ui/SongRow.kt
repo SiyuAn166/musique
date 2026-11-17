@@ -75,8 +75,9 @@ internal const val PART_ROW_DIVIDER_START_DP: Int =
  * that support it (playlist entries) enter selection mode.
  * [leading] draws a caller-supplied control before the cover
  * (the selection checkbox on playlist entries); [highlighted]
- * paints the whole row in the light grey used for checked and
- * dragged rows, against the clean white of the rest.
+ * paints the whole row in the darker container grey, distinct
+ * from the contextual bar's grey, against the clean white of
+ * the rest.
  */
 @Composable
 fun SongRow(
@@ -96,7 +97,7 @@ fun SongRow(
             .fillMaxWidth()
             .background(
                 if (highlighted) {
-                    MaterialTheme.colorScheme.surfaceVariant
+                    MaterialTheme.colorScheme.surfaceContainerHighest
                 } else {
                     Color.Transparent
                 },

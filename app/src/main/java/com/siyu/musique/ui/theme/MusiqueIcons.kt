@@ -176,10 +176,10 @@ object MusiqueIcons {
         "M5,20h14v-2H5V20z M19,9h-4V3H9v6H5l7,7L19,9z",
     )
 
-    /** Six-dot grip: the drag handle that reorders songs inside a playlist. */
-    val DragIndicator: ImageVector = icon(
-        "DragIndicator",
-        "M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+    /** Three-line hamburger: the drag handle that reorders songs inside a playlist. */
+    val DragHandle: ImageVector = icon(
+        "DragHandle",
+        "M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z",
     )
 
     private fun icon(name: String, pathData: String): ImageVector =

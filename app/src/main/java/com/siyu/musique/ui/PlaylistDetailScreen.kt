@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,14 +57,16 @@ import kotlinx.coroutines.delay
  * and plays a single video, with the playlist as the queue;
  * tapping a part plays that part.
  * Long-pressing a row enters selection mode with that row
- * checked, and the header turns into a contextual action bar:
+ * checked, and a contextual action bar floats above the page:
  * the tab bar's background color, a back button that leaves the
  * mode, the selected count in the middle, a delete icon on the
  * right, and a second row with a select-all checkbox and its
- * label. Circular checkboxes appear on the left of the rows,
- * tapping a row toggles its checkbox instead of playing, and a
- * checked row paints the light grey highlight against the clean
- * white of the rest. Deleting asks first, through a confirmation
+ * label. Floating it keeps the list still: triggering selection
+ * never pushes the rows down. Circular checkboxes appear on the
+ * left of the rows, tapping a row toggles its checkbox instead
+ * of playing, and a checked row paints the darker container
+ * grey, distinct from the bar's grey, against the clean white
+ * of the rest. Deleting asks first, through a confirmation
  * dialog; removing songs from the Downloads playlist deletes the
  * downloaded files as well.
  * The right side of every row in the default and user playlists
@@ -159,7 +162,11 @@ fun PlaylistDetailScreen(
         }
     }
 
-    Column(
+    // The contextual action bar floats above the page instead of
+    // sitting in the column: triggering selection mode must not
+    // push the list down. The plain header stays laid out
+    // underneath, so nothing moves when the bar appears.
+    Box(
         modifier = modifier
             .fillMaxSize()
             // Opaque: during the predictive back gesture the
@@ -168,91 +175,7 @@ fun PlaylistDetailScreen(
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        if (selecting && playlist != null) {
-            // Contextual action bar: the tab bar's background,
-            // a back button that leaves selection mode, the
-            // selected count in the middle, the delete icon on
-            // the right, and a select-all row of its own.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceContainer),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 8.dp, end = 8.dp, top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = {
-                            selecting = false
-                            selectedKeys = emptySet()
-                        },
-                    ) {
-                        Icon(
-                            imageVector = MusiqueIcons.ChevronLeft,
-                            contentDescription = stringResource(R.string.exit_selection),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                    Text(
-                        text = pluralStringResource(
-                            R.plurals.selected_songs,
-                            selectedKeys.size,
-                            selectedKeys.size,
-                        ),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(
-                        enabled = selectedKeys.isNotEmpty(),
-                        onClick = { showDeleteDialog = true },
-                    ) {
-                        Icon(
-                            imageVector = MusiqueIcons.Delete,
-                            contentDescription = stringResource(R.string.delete_selected),
-                            tint = if (selectedKeys.isNotEmpty()) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                }
-                val allSelected = playlist.tracks.isNotEmpty() &&
-                    selectedKeys.size == playlist.tracks.size
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            selectedKeys = if (allSelected) {
-                                emptySet()
-                            } else {
-                                playlist.tracks.mapTo(mutableSetOf()) { it.key }
-                            }
-                        }
-                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RoundCheckbox(checked = allSelected, onCheckedChange = null)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = stringResource(
-                            if (allSelected) {
-                                R.string.deselect_all
-                            } else {
-                                R.string.select_all
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-        } else {
+        Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -268,22 +191,8 @@ fun PlaylistDetailScreen(
                 }
                 Spacer(modifier = Modifier.weight(1f))
             }
-        }
 
-        if (playlist == null) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.playlist_not_found),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            if (playlist.tracks.isEmpty() && !playlist.isDownloads) {
+            if (playlist == null) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -291,218 +200,323 @@ fun PlaylistDetailScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = stringResource(R.string.empty_playlist),
+                        text = stringResource(R.string.playlist_not_found),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            } else if (playlist.tracks.isNotEmpty()) {
-                // Flattened rows: each entry, plus its parts right
-                // under it when expanded and known to have more
-                // than one. Selection mode shows entries only:
-                // removal works on whole entries, never on parts.
-                // A drag shows its local order instead of the
-                // saved one, and collapses every expansion, so
-                // the row index is the entry index throughout.
-                val displayTracks = dragOrder ?: playlist.tracks
-                val rows = remember(displayTracks, videoParts, expandedVideoIds, selecting) {
-                    buildList {
-                        displayTracks.forEach { track ->
-                            add(DetailListRow.Video(track))
-                            val parts = videoParts[track.id]
-                            if (!selecting && track.id in expandedVideoIds &&
-                                parts != null && parts.size > 1
-                            ) {
-                                parts.forEach { add(DetailListRow.Part(it)) }
+            } else {
+                if (playlist.tracks.isEmpty() && !playlist.isDownloads) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.empty_playlist),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (playlist.tracks.isNotEmpty()) {
+                    // Flattened rows: each entry, plus its parts right
+                    // under it when expanded and known to have more
+                    // than one. Selection mode shows entries only:
+                    // removal works on whole entries, never on parts.
+                    // A drag shows its local order instead of the
+                    // saved one, and collapses every expansion, so
+                    // the row index is the entry index throughout.
+                    val displayTracks = dragOrder ?: playlist.tracks
+                    val rows = remember(displayTracks, videoParts, expandedVideoIds, selecting) {
+                        buildList {
+                            displayTracks.forEach { track ->
+                                add(DetailListRow.Video(track))
+                                val parts = videoParts[track.id]
+                                if (!selecting && track.id in expandedVideoIds &&
+                                    parts != null && parts.size > 1
+                                ) {
+                                    parts.forEach { add(DetailListRow.Part(it)) }
+                                }
+                            }
+                        }
+                    }
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        itemsIndexed(
+                            rows,
+                            key = { _, row -> row.key },
+                        ) { _, listRow ->
+                            when (listRow) {
+                                is DetailListRow.Video -> {
+                                    val track = listRow.track
+                                    val expanded = track.id in expandedVideoIds
+                                    val isDragging = draggingKey == track.key
+                                    SongRow(
+                                        track = track,
+                                        // Rows are videos: match by bvid, since the
+                                        // row's cid may still be empty while the
+                                        // playing track's cid was filled by details.
+                                        isCurrent = track.id == currentTrack?.id,
+                                        // A parts lookup in flight dims the cover
+                                        // under a spinner instead of a frozen row.
+                                        loading = track.id in partsLoadingIds,
+                                        // Checked rows and the dragged row
+                                        // paint the light grey highlight.
+                                        highlighted = track.key in selectedKeys || isDragging,
+                                        leading = if (selecting) {
+                                            {
+                                                RoundCheckbox(
+                                                    checked = track.key in selectedKeys,
+                                                    onCheckedChange = { checked ->
+                                                        selectedKeys = if (checked) {
+                                                            selectedKeys + track.key
+                                                        } else {
+                                                            selectedKeys - track.key
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                        // Long-pressing enters selection mode
+                                        // with this row checked, so the delete
+                                        // icon is usable right away.
+                                        onLongClick = {
+                                            if (draggingKey == null) {
+                                                selecting = true
+                                                selectedKeys = if (track.key in selectedKeys) {
+                                                    selectedKeys - track.key
+                                                } else {
+                                                    selectedKeys + track.key
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            if (draggingKey != null) return@SongRow
+                                            if (selecting) {
+                                                selectedKeys = if (track.key in selectedKeys) {
+                                                    selectedKeys - track.key
+                                                } else {
+                                                    selectedKeys + track.key
+                                                }
+                                            } else {
+                                                // Tapping a row expands a collection
+                                                // and plays a single video. Unknown
+                                                // parts load first; the pending tap
+                                                // above decides once they land.
+                                                val known = videoParts[track.id]
+                                                when {
+                                                    known != null && known.size > 1 -> {
+                                                        expandedVideoIds = if (expanded) {
+                                                            expandedVideoIds - track.id
+                                                        } else {
+                                                            expandedVideoIds + track.id
+                                                        }
+                                                    }
+                                                    known != null -> {
+                                                        viewModel.playFromPlaylist(track, playlist)
+                                                    }
+                                                    else -> {
+                                                        pendingTapTrack = track
+                                                        viewModel.loadVideoParts(track)
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        trailing = {
+                                            if (!playlist.isDownloads && !selecting) {
+                                                DragHandle(
+                                                    onDragStart = {
+                                                        draggingKey = track.key
+                                                        dragOffsetY = 0f
+                                                        dragOrder = playlist.tracks
+                                                        expandedVideoIds = emptySet()
+                                                        edgeScrollDirection = 0
+                                                    },
+                                                    onDrag = dragHandler@{ dragAmountY ->
+                                                        val key = draggingKey ?: return@dragHandler
+                                                        val order = dragOrder ?: return@dragHandler
+                                                        dragOffsetY += dragAmountY
+                                                        val fromIndex = order.indexOfFirst { it.key == key }
+                                                        if (fromIndex < 0) return@dragHandler
+                                                        val layoutInfo = listState.layoutInfo
+                                                        val draggedInfo = layoutInfo.visibleItemsInfo
+                                                            .firstOrNull { it.key == key }
+                                                            ?: return@dragHandler
+                                                        val draggedCenter = draggedInfo.offset +
+                                                            dragOffsetY + draggedInfo.size / 2
+                                                        // The row under the dragged row's
+                                                        // center trades places with it; the
+                                                        // offset gives back the traded row's
+                                                        // height, so the dragged row stays
+                                                        // under the finger.
+                                                        val target = layoutInfo.visibleItemsInfo
+                                                            .firstOrNull { info ->
+                                                                info.key != key &&
+                                                                    draggedCenter >= info.offset &&
+                                                                    draggedCenter <= info.offset + info.size
+                                                            }
+                                                        if (target != null && target.index != fromIndex) {
+                                                            dragOrder = order.moved(fromIndex, target.index)
+                                                            dragOffsetY += if (target.index > fromIndex) {
+                                                                -target.size.toFloat()
+                                                            } else {
+                                                                target.size.toFloat()
+                                                            }
+                                                        }
+                                                        // Near an edge the list scrolls
+                                                        // under the held row.
+                                                        edgeScrollDirection = when {
+                                                            draggedCenter <
+                                                                layoutInfo.viewportStartOffset +
+                                                                edgeScrollThresholdPx -> -1
+                                                            draggedCenter >
+                                                                layoutInfo.viewportEndOffset -
+                                                                edgeScrollThresholdPx -> 1
+                                                            else -> 0
+                                                        }
+                                                    },
+                                                    onDragEnd = {
+                                                        val order = dragOrder
+                                                        draggingKey = null
+                                                        dragOffsetY = 0f
+                                                        dragOrder = null
+                                                        edgeScrollDirection = 0
+                                                        if (order != null) {
+                                                            viewModel.reorderPlaylistTracks(
+                                                                playlist.id,
+                                                                order.map { it.key },
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .animateItem()
+                                            .graphicsLayer {
+                                                translationY = if (isDragging) dragOffsetY else 0f
+                                                shadowElevation = if (isDragging) {
+                                                    with(density) { DRAGGED_ROW_ELEVATION_DP.dp.toPx() }
+                                                } else {
+                                                    0f
+                                                }
+                                            },
+                                    )
+                                }
+                                is DetailListRow.Part -> {
+                                    // A single part: tapping plays it with
+                                    // the playlist as the queue.
+                                    SongRow(
+                                        track = listRow.track,
+                                        isCurrent = listRow.track.key == currentTrack?.key,
+                                        onClick = {
+                                            viewModel.playFromPlaylist(listRow.track, playlist)
+                                        },
+                                        trailing = {},
+                                        modifier = Modifier
+                                            .animateItem()
+                                            .padding(
+                                                start = PART_ROW_INDENT_DP.dp,
+                                            ),
+                                        compact = true,
+                                    )
+                                }
                             }
                         }
                     }
                 }
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    itemsIndexed(
-                        rows,
-                        key = { _, row -> row.key },
-                    ) { _, listRow ->
-                        when (listRow) {
-                            is DetailListRow.Video -> {
-                                val track = listRow.track
-                                val expanded = track.id in expandedVideoIds
-                                val isDragging = draggingKey == track.key
-                                SongRow(
-                                    track = track,
-                                    // Rows are videos: match by bvid, since the
-                                    // row's cid may still be empty while the
-                                    // playing track's cid was filled by details.
-                                    isCurrent = track.id == currentTrack?.id,
-                                    // A parts lookup in flight dims the cover
-                                    // under a spinner instead of a frozen row.
-                                    loading = track.id in partsLoadingIds,
-                                    // Checked rows and the dragged row
-                                    // paint the light grey highlight.
-                                    highlighted = track.key in selectedKeys || isDragging,
-                                    leading = if (selecting) {
-                                        {
-                                            RoundCheckbox(
-                                                checked = track.key in selectedKeys,
-                                                onCheckedChange = { checked ->
-                                                    selectedKeys = if (checked) {
-                                                        selectedKeys + track.key
-                                                    } else {
-                                                        selectedKeys - track.key
-                                                    }
-                                                },
-                                            )
-                                        }
-                                    } else {
-                                        null
-                                    },
-                                    // Long-pressing enters selection mode
-                                    // with this row checked, so the delete
-                                    // icon is usable right away.
-                                    onLongClick = {
-                                        if (draggingKey == null) {
-                                            selecting = true
-                                            selectedKeys = if (track.key in selectedKeys) {
-                                                selectedKeys - track.key
-                                            } else {
-                                                selectedKeys + track.key
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        if (draggingKey != null) return@SongRow
-                                        if (selecting) {
-                                            selectedKeys = if (track.key in selectedKeys) {
-                                                selectedKeys - track.key
-                                            } else {
-                                                selectedKeys + track.key
-                                            }
-                                        } else {
-                                            // Tapping a row expands a collection
-                                            // and plays a single video. Unknown
-                                            // parts load first; the pending tap
-                                            // above decides once they land.
-                                            val known = videoParts[track.id]
-                                            when {
-                                                known != null && known.size > 1 -> {
-                                                    expandedVideoIds = if (expanded) {
-                                                        expandedVideoIds - track.id
-                                                    } else {
-                                                        expandedVideoIds + track.id
-                                                    }
-                                                }
-                                                known != null -> {
-                                                    viewModel.playFromPlaylist(track, playlist)
-                                                }
-                                                else -> {
-                                                    pendingTapTrack = track
-                                                    viewModel.loadVideoParts(track)
-                                                }
-                                            }
-                                        }
-                                    },
-                                    trailing = {
-                                        if (!playlist.isDownloads && !selecting) {
-                                            DragHandle(
-                                                onDragStart = {
-                                                    draggingKey = track.key
-                                                    dragOffsetY = 0f
-                                                    dragOrder = playlist.tracks
-                                                    expandedVideoIds = emptySet()
-                                                    edgeScrollDirection = 0
-                                                },
-                                                onDrag = dragHandler@{ dragAmountY ->
-                                                    val key = draggingKey ?: return@dragHandler
-                                                    val order = dragOrder ?: return@dragHandler
-                                                    dragOffsetY += dragAmountY
-                                                    val fromIndex = order.indexOfFirst { it.key == key }
-                                                    if (fromIndex < 0) return@dragHandler
-                                                    val layoutInfo = listState.layoutInfo
-                                                    val draggedInfo = layoutInfo.visibleItemsInfo
-                                                        .firstOrNull { it.key == key }
-                                                        ?: return@dragHandler
-                                                    val draggedCenter = draggedInfo.offset +
-                                                        dragOffsetY + draggedInfo.size / 2
-                                                    // The row under the dragged row's
-                                                    // center trades places with it; the
-                                                    // offset gives back the traded row's
-                                                    // height, so the dragged row stays
-                                                    // under the finger.
-                                                    val target = layoutInfo.visibleItemsInfo
-                                                        .firstOrNull { info ->
-                                                            info.key != key &&
-                                                                draggedCenter >= info.offset &&
-                                                                draggedCenter <= info.offset + info.size
-                                                        }
-                                                    if (target != null && target.index != fromIndex) {
-                                                        dragOrder = order.moved(fromIndex, target.index)
-                                                        dragOffsetY += if (target.index > fromIndex) {
-                                                            -target.size.toFloat()
-                                                        } else {
-                                                            target.size.toFloat()
-                                                        }
-                                                    }
-                                                    // Near an edge the list scrolls
-                                                    // under the held row.
-                                                    edgeScrollDirection = when {
-                                                        draggedCenter <
-                                                            layoutInfo.viewportStartOffset +
-                                                            edgeScrollThresholdPx -> -1
-                                                        draggedCenter >
-                                                            layoutInfo.viewportEndOffset -
-                                                            edgeScrollThresholdPx -> 1
-                                                        else -> 0
-                                                    }
-                                                },
-                                                onDragEnd = {
-                                                    val order = dragOrder
-                                                    draggingKey = null
-                                                    dragOffsetY = 0f
-                                                    dragOrder = null
-                                                    edgeScrollDirection = 0
-                                                    if (order != null) {
-                                                        viewModel.reorderPlaylistTracks(
-                                                            playlist.id,
-                                                            order.map { it.key },
-                                                        )
-                                                    }
-                                                },
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .graphicsLayer {
-                                            translationY = if (isDragging) dragOffsetY else 0f
-                                            shadowElevation = if (isDragging) {
-                                                with(density) { DRAGGED_ROW_ELEVATION_DP.dp.toPx() }
-                                            } else {
-                                                0f
-                                            }
-                                        },
-                                )
-                            }
-                            is DetailListRow.Part -> {
-                                // A single part: tapping plays it with
-                                // the playlist as the queue.
-                                SongRow(
-                                    track = listRow.track,
-                                    isCurrent = listRow.track.key == currentTrack?.key,
-                                    onClick = {
-                                        viewModel.playFromPlaylist(listRow.track, playlist)
-                                    },
-                                    trailing = {},
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .padding(
-                                            start = PART_ROW_INDENT_DP.dp,
-                                        ),
-                                    compact = true,
-                                )
-                            }
+            }
+            }
+        if (selecting && playlist != null) {
+            // Contextual action bar, floating above the page: the
+            // tab bar's background, a back button that leaves
+            // selection mode, the selected count in the middle,
+            // the delete icon on the right, and a select-all row
+            // of its own. The shadow sets it apart from the list
+            // scrolling underneath it.
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shadowElevation = 4.dp,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = {
+                                selecting = false
+                                selectedKeys = emptySet()
+                            },
+                        ) {
+                            Icon(
+                                imageVector = MusiqueIcons.ChevronLeft,
+                                contentDescription = stringResource(R.string.exit_selection),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
                         }
+                        Text(
+                            text = pluralStringResource(
+                                R.plurals.selected_songs,
+                                selectedKeys.size,
+                                selectedKeys.size,
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            enabled = selectedKeys.isNotEmpty(),
+                            onClick = { showDeleteDialog = true },
+                        ) {
+                            Icon(
+                                imageVector = MusiqueIcons.Delete,
+                                contentDescription = stringResource(R.string.delete_selected),
+                                tint = if (selectedKeys.isNotEmpty()) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                    }
+                    val allSelected = playlist.tracks.isNotEmpty() &&
+                        selectedKeys.size == playlist.tracks.size
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedKeys = if (allSelected) {
+                                    emptySet()
+                                } else {
+                                    playlist.tracks.mapTo(mutableSetOf()) { it.key }
+                                }
+                            }
+                            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RoundCheckbox(checked = allSelected, onCheckedChange = null)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = stringResource(
+                                if (allSelected) {
+                                    R.string.deselect_all
+                                } else {
+                                    R.string.select_all
+                                },
+                            ),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                 }
             }
@@ -580,9 +594,10 @@ fun PlaylistDetailScreen(
 }
 
 /**
- * The drag handle on a playlist row: the six-dot grip. Dragging
- * it starts a reorder drag; the row itself keeps its tap and
- * long-press behavior, so multi-select and sorting stay apart.
+ * The drag handle on a playlist row: the three-line hamburger.
+ * Dragging it starts a reorder drag; the row itself keeps its
+ * tap and long-press behavior, so multi-select and sorting stay
+ * apart.
  * The callbacks are read through updated state because the
  * gesture block below runs once per handle: a stale closure
  * would drag with the playlist order from the first
@@ -615,7 +630,7 @@ private fun DragHandle(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = MusiqueIcons.DragIndicator,
+            imageVector = MusiqueIcons.DragHandle,
             contentDescription = stringResource(R.string.drag_to_reorder),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp),
