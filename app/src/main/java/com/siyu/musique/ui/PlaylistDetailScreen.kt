@@ -56,8 +56,10 @@ import kotlinx.coroutines.delay
  * Playlist detail screen: a back chevron on top, then flat song
  * rows like the search rows, with no title text and no dividers
  * between rows. Tapping a row expands a collection to its parts
- * and plays a single video, with the playlist as the queue;
- * tapping a part plays that part.
+ * and plays a single video, with the playlist as the queue; a
+ * row that names one specific part of a collection plays that
+ * part directly and never expands. Tapping a part plays that
+ * part.
  * Long-pressing a row enters selection mode with that row
  * checked, and a contextual action bar floats above the page:
  * the tab bar's background color, a back button that leaves the
@@ -148,15 +150,16 @@ fun PlaylistDetailScreen(
     // A row tap on an entry with unknown parts waits for the
     // load: a collection expands, a single video plays (unless
     // selection mode took over meanwhile, which drops the tap).
-    // The parts are fetched once and cached, so later taps
-    // expand, collapse, and play without another lookup. A
+    // An entry that names a specific part never waits: it plays
+    // directly. The parts are fetched once and cached, so later
+    // taps expand, collapse, and play without another lookup. A
     // failed load leaves the tap pending until another tap
     // supersedes or retries it.
     LaunchedEffect(videoParts, pendingTapTrack, expandedVideoIds, selecting, playlists) {
         val pending = pendingTapTrack ?: return@LaunchedEffect
         val parts = videoParts[pending.id] ?: return@LaunchedEffect
         pendingTapTrack = null
-        if (parts.size > 1) {
+        if (parts.size > 1 && pending.cid.isEmpty()) {
             expandedVideoIds = expandedVideoIds + pending.id
         } else if (!selecting) {
             val current = playlists.firstOrNull { it.id == playlistId }
@@ -233,8 +236,11 @@ fun PlaylistDetailScreen(
                 } else if (playlist.tracks.isNotEmpty()) {
                     // Flattened rows: each entry, plus its parts right
                     // under it when expanded and known to have more
-                    // than one. Selection mode shows entries only:
-                    // removal works on whole entries, never on parts.
+                    // than one. Only whole-video entries expand: an
+                    // entry that names a specific part is that
+                    // song, never the collection. Selection mode
+                    // shows entries only: removal works on whole
+                    // entries, never on parts.
                     // A drag shows its local order instead of the
                     // saved one, and collapses every expansion, so
                     // the row index is the entry index throughout.
@@ -245,6 +251,7 @@ fun PlaylistDetailScreen(
                                 add(DetailListRow.Video(track))
                                 val parts = videoParts[track.id]
                                 if (!selecting && track.id in expandedVideoIds &&
+                                    track.cid.isEmpty() &&
                                     parts != null && parts.size > 1
                                 ) {
                                     parts.forEach { add(DetailListRow.Part(it)) }
@@ -268,10 +275,17 @@ fun PlaylistDetailScreen(
                                     val isDragging = draggingKey == track.key
                                     SongRow(
                                         track = track,
-                                        // Rows are videos: match by bvid, since the
-                                        // row's cid may still be empty while the
-                                        // playing track's cid was filled by details.
-                                        isCurrent = track.id == currentTrack?.id,
+                                        // Whole-video rows match by bvid, since
+                                        // the row's cid may still be empty while
+                                        // the playing track's cid was filled by
+                                        // details. A row that names a specific
+                                        // part matches by key, so it only lights
+                                        // up when that part itself is playing.
+                                        isCurrent = if (track.cid.isEmpty()) {
+                                            track.id == currentTrack?.id
+                                        } else {
+                                            track.key == currentTrack?.key
+                                        },
                                         // A parts lookup in flight dims the cover
                                         // under a spinner instead of a frozen row.
                                         loading = track.id in partsLoadingIds,
@@ -319,9 +333,15 @@ fun PlaylistDetailScreen(
                                                 // Tapping a row expands a collection
                                                 // and plays a single video. Unknown
                                                 // parts load first; the pending tap
-                                                // above decides once they land.
+                                                // above decides once they land. An
+                                                // entry that names a specific part
+                                                // plays that part at once: it is a
+                                                // song, not the collection.
                                                 val known = videoParts[track.id]
                                                 when {
+                                                    track.cid.isNotEmpty() -> {
+                                                        viewModel.playFromPlaylist(track, playlist)
+                                                    }
                                                     known != null && known.size > 1 -> {
                                                         expandedVideoIds = if (expanded) {
                                                             expandedVideoIds - track.id
