@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
         val repository = BiliDependencies.createSearchRepository(applicationContext)
         val audioCache = BiliDependencies.createAudioCache(applicationContext)
         val playerEngine = BiliDependencies.createPlayerEngine(applicationContext, audioCache)
-        val appCache = BiliDependencies.createAppCache(applicationContext, audioCache)
+        val appCache = BiliDependencies.createAppCache(applicationContext)
         val qualityPreferenceStore =
             BiliDependencies.createQualityPreferenceStore(applicationContext)
         val languagePreferenceStore =

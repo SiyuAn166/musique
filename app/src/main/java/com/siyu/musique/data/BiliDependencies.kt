@@ -50,9 +50,11 @@ object BiliDependencies {
             audioCache,
         )
 
-    /** The app caches (audio + covers), for the settings screen's size and clear button. */
-    fun createAppCache(context: Context, audioCache: SimpleCache): AppCache =
-        AndroidAppCache(context.applicationContext, audioCache)
+    /** The app caches (audio + covers), for the settings screen's size and clear button. The audio cache is resolved from the holder on every call, so it survives the playback service releasing the shared cache in onDestroy; a captured instance would throw once released. */
+    fun createAppCache(context: Context): AppCache =
+        AndroidAppCache(context.applicationContext) {
+            PlayerHolder.audioCache(context.applicationContext)
+        }
 
     /** The persisted audio quality preference, read by the ViewModel at startup. */
     fun createQualityPreferenceStore(context: Context): QualityPreferenceStore =

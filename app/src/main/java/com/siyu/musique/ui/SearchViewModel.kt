@@ -1858,7 +1858,7 @@ class SearchViewModel(
             runCatching { appCache.sizeBytes() }
                 .onSuccess { _cacheSizeBytes.value = it }
                 .onFailure {
-                    logger.w("Cache", "cache size failed (${it::class.simpleName})")
+                    logger.w("Cache", "cache size failed (${it::class.simpleName}: ${it.message})")
                 }
         }
     }
