@@ -202,9 +202,10 @@ private const val PLAYLIST_ROW_VERTICAL_PADDING_DP = 4
 /**
  * A playlist row with its long-press menu: a custom playlist
  * offers rename and delete, the default playlist and Downloads
- * offer nothing and never show a menu. The menu opens at the
- * press position instead of the row's left edge, and deleting
- * asks first through a confirmation dialog. Shared by the home
+ * offer nothing and never show a menu. The menu opens directly
+ * below the pressed card, starting at the finger's horizontal
+ * position instead of the row's left edge, and deleting asks
+ * first through a confirmation dialog. Shared by the home
  * playlists section and the Playlists screen.
  */
 @Composable
@@ -226,16 +227,20 @@ internal fun PlaylistRowWithMenu(
             onClick = onClick,
             onLongClick = if (editable) {
                 { pressOffset ->
-                    // The press position is relative to the
-                    // card itself; the menu anchors to the
-                    // surrounding box, so add the card's outer
-                    // padding back in.
+                    // The menu opens directly below its anchor,
+                    // so the vertical offset stays zero: adding
+                    // the press height would push the menu a row
+                    // further down, away from the pressed card.
+                    // Only the horizontal position follows the
+                    // finger, with the card's outer padding
+                    // added back in: the press position is
+                    // relative to the card itself, the menu
+                    // anchors to the surrounding box.
                     menuOffset = with(density) {
                         DpOffset(
                             pressOffset.x.toDp() +
                                 PLAYLIST_ROW_HORIZONTAL_PADDING_DP.dp,
-                            pressOffset.y.toDp() +
-                                PLAYLIST_ROW_VERTICAL_PADDING_DP.dp,
+                            0.dp,
                         )
                     }
                     showMenu = true
@@ -384,8 +389,8 @@ internal fun RenamePlaylistDialog(
  * cover, the name, and the song count. Tapping the card opens the
  * playlist. Shared by the home playlists section and the Playlists
  * screen. [onLongClick] is null for rows with no long-press
- * action; the list's menu rows pass one that opens the menu at
- * the press position. The gestures run through [detectTapGestures]
+ * action; the list's menu rows pass one that opens the menu
+ * below the card, aligned with the press position. The gestures run through [detectTapGestures]
  * instead of combinedClickable so the long press reports where
  * the finger landed; the press ripple and the long-press haptic
  * are wired back in by hand.
