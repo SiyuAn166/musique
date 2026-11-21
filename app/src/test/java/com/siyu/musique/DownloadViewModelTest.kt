@@ -82,6 +82,7 @@ class DownloadViewModelTest {
     /** A repository that counts fetchDetail/fetchPlayUrl calls and returns one canned stream. */
     private class DownloadRepository(
         var playUrlQualityId: Int = 30280,
+        var backupUrls: List<String> = emptyList(),
     ) : SearchRepository {
         var fetchDetailCalls = 0
         var fetchPlayUrlCalls = 0
@@ -103,6 +104,7 @@ class DownloadViewModelTest {
                 qualityId = playUrlQualityId,
                 baseUrl = "https://cdn.example/${track.id}_${track.cid}_$playUrlQualityId.m4s",
                 bandwidth = 1L,
+                backupUrls = backupUrls,
             )
         }
 
@@ -147,6 +149,28 @@ class DownloadViewModelTest {
             failWith?.let { throw it }
             target.writeBytes("audio".toByteArray())
             onProgress(100L, 100L)
+        }
+    }
+
+    /** A downloader that fails for [failUrls] and writes fixed bytes for any other URL. */
+    private class MirrorFailoverDownloader(
+        private val failUrls: Set<String>,
+    ) : AudioFileDownloader {
+        val attemptedUrls = mutableListOf<String>()
+
+        override suspend fun download(
+            url: String,
+            target: File,
+            onProgress: (Long, Long?) -> Unit,
+        ) {
+            attemptedUrls += url
+            target.parentFile?.mkdirs()
+            if (url in failUrls) {
+                target.writeBytes("partial".toByteArray())
+                throw IOException("connection reset")
+            }
+            target.writeBytes("audio".toByteArray())
+            onProgress(5L, 5L)
         }
     }
 
@@ -272,6 +296,57 @@ class DownloadViewModelTest {
             assertTrue(vm.downloadProgress.value.isEmpty())
             assertTrue(File(downloadsDir, "BV1a_111_30280.m4a").exists())
         }
+
+    @Test
+    fun `download falls over to the backup mirror when the base mirror fails`() =
+        runTest(testDispatcher) {
+            val repository = DownloadRepository()
+            val backupUrl = "https://backup.example/BV1a_111_30280.m4s"
+            repository.backupUrls = listOf(backupUrl)
+            val baseUrl = "https://cdn.example/BV1a_111_30280.m4s"
+            val downloader = MirrorFailoverDownloader(failUrls = setOf(baseUrl))
+            val vm = viewModel(
+                FakePlayerEngine(),
+                repository,
+                InMemoryDownloadStore(),
+                downloader,
+            )
+            advanceUntilIdle()
+
+            vm.downloadTrack(track("BV1a", "111"))
+            advanceUntilIdle()
+
+            assertEquals(listOf(baseUrl, backupUrl), downloader.attemptedUrls)
+            assertEquals(1, vm.downloadRecords.value.size)
+            // The failed attempt's partial bytes never mix into
+            // the retry: the target is rewritten from the start.
+            assertEquals("audio", File(downloadsDir, "BV1a_111_30280.m4a").readText())
+            assertTrue(vm.downloadProgress.value.isEmpty())
+        }
+
+    @Test
+    fun `download fails only after every mirror fails`() = runTest(testDispatcher) {
+        val repository = DownloadRepository()
+        val baseUrl = "https://cdn.example/BV1a_111_30280.m4s"
+        val backupUrl = "https://backup.example/BV1a_111_30280.m4s"
+        repository.backupUrls = listOf(backupUrl)
+        val downloader = MirrorFailoverDownloader(failUrls = setOf(baseUrl, backupUrl))
+        val vm = viewModel(
+            FakePlayerEngine(),
+            repository,
+            InMemoryDownloadStore(),
+            downloader,
+        )
+        advanceUntilIdle()
+
+        vm.downloadTrack(track("BV1a", "111"))
+        advanceUntilIdle()
+
+        assertEquals(listOf(baseUrl, backupUrl), downloader.attemptedUrls)
+        assertTrue(vm.downloadRecords.value.isEmpty())
+        assertFalse(File(downloadsDir, "BV1a_111_30280.m4a").exists())
+        assertTrue(vm.downloadProgress.value["BV1a:111:30280"]?.failed == true)
+    }
 
     @Test
     fun `download progress reaches the exposed state while downloading`() =

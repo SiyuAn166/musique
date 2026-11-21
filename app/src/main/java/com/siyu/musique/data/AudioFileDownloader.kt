@@ -1,6 +1,7 @@
 package com.siyu.musique.data
 
 import com.siyu.musique.core.network.BiliClient
+import com.siyu.musique.core.network.DownloadHttpException
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -61,12 +62,17 @@ internal class ProgressReportGate(
  * The [AudioFileDownloader] backed by OkHttp, streaming the
  * response body to the file with byte counting. The request
  * carries the same Firefox User-Agent and bilibili.com Referer
- * as the player path: the CDN answers 403 without them. The
- * blocking IO runs on [Dispatchers.IO]; progress callbacks
- * arrive from that thread, and StateFlow writes from any
- * thread are safe. Progress callbacks are throttled by a
- * [ProgressReportGate], so a fast download reports about ten
- * times per second instead of once per buffer read.
+ * as the player path: the CDN answers 403 without them. It also
+ * carries `Range: bytes=0-`: the CDN rejects a plain GET on
+ * these URLs (403 on the Akamai mirror, 567 on the Shenzhen
+ * one, proven live Nov 20, 2026), while a range request
+ * answers 206 with the whole file. Playback never hit this
+ * because Media3 always sends Range. The blocking IO runs on
+ * [Dispatchers.IO]; progress callbacks arrive from that thread,
+ * and StateFlow writes from any thread are safe. Progress
+ * callbacks are throttled by a [ProgressReportGate], so a fast
+ * download reports about ten times per second instead of once
+ * per buffer read.
  */
 class OkHttpAudioFileDownloader(
     private val client: OkHttpClient = OkHttpGateway.defaultClient(),
@@ -82,11 +88,12 @@ class OkHttpAudioFileDownloader(
                 .url(url)
                 .header("User-Agent", BiliClient.USER_AGENT)
                 .header("Referer", REFERER)
+                .header("Range", "bytes=0-")
                 .get()
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    throw IOException("Download failed: HTTP ${response.code}")
+                    throw DownloadHttpException(response.code)
                 }
                 val body = response.body
                     ?: throw IOException("Download failed: empty body")

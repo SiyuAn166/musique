@@ -32,7 +32,11 @@ class BiliBootstrapTest {
 
     private class Fixture(
         val gateway: FakeGateway = FakeGateway(),
-        val jar: CookieJar = CookieJar(),
+        // The jar shares the fixture clock: the ticket fixture
+        // expires Nov 17, 2026, and with real time the
+        // bili_ticket cookie reads as expired once that passes,
+        // even though bootstrap itself stores it fine.
+        val jar: CookieJar = CookieJar(nowMillis = { 1794710392000L }),
         val store: InMemoryBootstrapStore = InMemoryBootstrapStore(),
         val keys: WbiKeyStore = WbiKeyStore(),
     ) {

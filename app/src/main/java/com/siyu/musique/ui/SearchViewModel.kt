@@ -1615,11 +1615,13 @@ class SearchViewModel(
      * Downloads [track] at the current quality preference: the
      * details call first when the cid is missing, then a fresh
      * play URL, then the bytes streamed to a file in the
-     * downloads dir. Progress lands in [downloadProgress]; a
-     * failure deletes the partial file and marks the entry
-     * failed, and tapping again retries. A track already
-     * downloaded at the resolved quality is a no-op, as is a
-     * second tap while a download is in flight.
+     * downloads dir. The stream's mirrors are tried in order,
+     * base URL first, like playback: one mirror can reject the
+     * request while another serves it. Progress lands in
+     * [downloadProgress]; a failure deletes the partial file and
+     * marks the entry failed, and tapping again retries. A track
+     * already downloaded at the resolved quality is a no-op, as
+     * is a second tap while a download is in flight.
      */
     fun downloadTrack(track: Track) {
         val jobKey = track.key
@@ -1657,14 +1659,40 @@ class SearchViewModel(
                     removeDownloadRecord(existing)
                 }
                 target = File(downloadsDir, downloadFileName(current, stream.qualityId))
-                audioFileDownloader.download(stream.baseUrl, target) { bytes, total ->
-                    val fraction = if (total != null && total > 0) {
-                        (bytes.toFloat() / total.toFloat()).coerceIn(0f, 1f)
-                    } else {
-                        null
+                // Mirrors in order, base URL first: a mirror can
+                // reject the request (403, 567) while the next
+                // one serves it, and playback already fails over
+                // the same way. Each attempt rewrites the target
+                // from the start, so a partial file from a failed
+                // attempt never mixes into the next one. A
+                // cancellation is not a mirror failure: it must
+                // reach the outer catch, which clears the
+                // progress entry.
+                val urls = listOf(stream.baseUrl) + stream.backupUrls
+                var lastError: Exception? = null
+                for ((attempt, url) in urls.withIndex()) {
+                    try {
+                        audioFileDownloader.download(url, target) { bytes, total ->
+                            val fraction = if (total != null && total > 0) {
+                                (bytes.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                            } else {
+                                null
+                            }
+                            publishDownloadProgress(progressKey, DownloadProgress(fraction))
+                        }
+                        lastError = null
+                        break
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        lastError = e
+                        logger.w(
+                            DOWNLOAD_TAG,
+                            "download mirror failed attempt=$attempt ${describeError(e)}",
+                        )
                     }
-                    publishDownloadProgress(progressKey, DownloadProgress(fraction))
                 }
+                lastError?.let { throw it }
                 val record = DownloadRecord(
                     track = current.copy(playUrl = ""),
                     qualityId = stream.qualityId,

@@ -10,6 +10,7 @@ import com.siyu.musique.core.network.BiliApiException
 import com.siyu.musique.core.network.BiliBootstrap
 import com.siyu.musique.core.network.BiliNetworkException
 import com.siyu.musique.core.network.BiliParseException
+import com.siyu.musique.core.network.DownloadHttpException
 import com.siyu.musique.core.network.av2bv
 import com.siyu.musique.model.Track
 import kotlin.time.Duration
@@ -261,5 +262,6 @@ fun describeError(error: Throwable): String = when (error) {
     is BiliApiException -> "api code ${error.code}"
     is BiliNetworkException -> "network"
     is BiliParseException -> "parse"
+    is DownloadHttpException -> "http ${error.status}"
     else -> error::class.simpleName ?: "unknown"
 }
